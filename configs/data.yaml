@@ -1,0 +1,30 @@
+dataset:
+  name: scperturb_norman2019
+  source: scPerturb benchmark
+  cell_context: K562
+  include_single_gene_only: true
+  exclude_multi_gene_perturbations: true
+  control_label: control
+
+preprocess:
+  min_genes_per_cell: 200
+  min_cells_per_gene: 3
+  normalize_total_target_sum: 10000
+  log1p: true
+  hvg_top_genes: 512
+  hvg_upper_bound: 800
+  sparse_to_dense_after_hvg: true
+  dense_dtype: float32
+  max_cells_per_perturbation: 500
+
+pairing:
+  target: delta_expression
+  strategy: batch_aware_control_mean
+  fallback_strategy: global_control_mean_within_cell_context
+
+split:
+  seen_protocol: stratified_within_perturbation_condition
+  unseen_protocol: grouped_by_perturbation_gene
+  val_fraction: 0.1
+  test_fraction: 0.1
+  random_seed: 42

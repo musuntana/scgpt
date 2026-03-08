@@ -1,0 +1,23 @@
+model:
+  name: transformer_local_mvp
+  target: delta_expression
+  perturbation_injection: additive_to_all_gene_tokens
+  use_positional_encoding: false
+  gene_order: saved_hvg_index
+
+transformer:
+  d_model: 128
+  n_heads: 4
+  n_layers: 2
+  ffn_dim: 256
+  dropout: 0.1
+
+input:
+  hvg_count: 512
+  max_hvg_without_memory_estimate: 1000
+  value_encoder: linear_scalar_projection
+
+memory_guardrails:
+  recommended_hvg_min: 512
+  recommended_hvg_max: 800
+  prefer_standard_attention: true

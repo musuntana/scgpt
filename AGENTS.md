@@ -11,6 +11,8 @@ The following files define project intent and must stay aligned:
 - `PROJECT_PLAN.md`: scope, milestones, architecture decisions, deliverables
 - `README.md`: setup, usage, and demo instructions
 - `configs/*.yaml`: runtime configuration and local-safe defaults
+- `pyproject.toml`: Python version and dependency source of truth
+- `uv.lock`: locked dependency snapshot for reproducible local environments
 
 If implementation needs broader scope, update `PROJECT_PLAN.md` first.
 
@@ -166,9 +168,12 @@ The app must not:
 
 ## Environment Rules
 
-1. Prefer Python `3.10` or `3.11`.
-2. If dependency compatibility conflicts appear, prefer the most stable environment over the newest version.
-3. Record the chosen Python version in `README.md` and environment setup files.
+1. Default environment manager is `uv`.
+2. Default Python version is `3.11` unless compatibility requires otherwise.
+3. Keep the local virtual environment in `.venv`.
+4. Keep the local uv cache inside the repository as `.uv-cache` when sandboxing or portability matters.
+5. If dependency compatibility conflicts appear, prefer the most stable environment over the newest version.
+6. Record the chosen Python version in `README.md`, `.python-version`, and environment setup files.
 
 ## Coding Conventions
 
@@ -186,6 +191,8 @@ The app must not:
 2. Add a centralized config loader under `src/utils/config.py`.
 3. Validate required config fields before starting training or preprocessing.
 4. Do not scatter default values across multiple modules.
+5. Runtime Python dependencies must be updated in `pyproject.toml` first; `requirements.txt` is secondary.
+6. After dependency changes, refresh `uv.lock` through `uv sync`.
 
 ## Testing Requirements
 

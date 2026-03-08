@@ -4,7 +4,45 @@ dataset:
   cell_context: K562
   include_single_gene_only: true
   exclude_multi_gene_perturbations: true
-  control_label: control
+  control_label: auto
+  raw_path: data/raw/NormanWeissman2019_filtered.h5ad
+  download_url: https://zenodo.org/records/10044268/files/NormanWeissman2019_filtered.h5ad?download=1
+  expected_md5: c870e6967d91c017d9da827bab183cd6
+
+schema:
+  preset: scperturb_norman2019
+  perturbation_col: auto
+  batch_col: auto
+  context_cols: auto
+  control_label_candidates:
+    - control
+    - ctrl
+    - ntc
+    - non-targeting
+    - nontargeting
+    - unperturbed
+  perturbation_col_candidates:
+    - perturbation_canonical
+    - perturbation_new
+    - perturbation
+    - condition
+    - target_gene
+    - gene
+  batch_col_candidates:
+    - batch
+    - gemgroup
+    - lane
+    - donor
+  context_col_candidates:
+    - celltype_new
+    - celltype
+    - cell_line
+  multi_gene_delimiters:
+    - ";"
+    - "+"
+    - ","
+    - "|"
+    - "_"
 
 preprocess:
   min_genes_per_cell: 200

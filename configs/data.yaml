@@ -13,7 +13,8 @@ schema:
   preset: scperturb_norman2019
   perturbation_col: auto
   batch_col: auto
-  context_cols: auto
+  context_cols:
+    - celltype_new
   control_label_candidates:
     - control
     - ctrl

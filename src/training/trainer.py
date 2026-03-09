@@ -103,12 +103,12 @@ class Trainer:
                 best_metric = current_metric
                 patience = 0
                 self.save_checkpoint("best_model.pt")
-                self._write_history(history)
             else:
                 patience += 1
-                if patience >= self.config.early_stopping_patience:
-                    LOGGER.info("Early stopping after %s epochs.", epoch)
-                    break
+            self._write_history(history)
+            if patience >= self.config.early_stopping_patience:
+                LOGGER.info("Early stopping after %s epochs.", epoch)
+                break
 
         return history
 
@@ -173,6 +173,25 @@ class Trainer:
             predictions=np.concatenate(predictions, axis=0),
             targets=np.concatenate(targets, axis=0),
             perturbation_index=np.concatenate(perturbations, axis=0),
+        )
+
+    @torch.no_grad()
+    def collect_predictions(
+        self, loader: DataLoader
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Collect raw predictions and perturbation indices from a loader."""
+        self.model.eval()
+        predictions: list[np.ndarray] = []
+        perturbations: list[np.ndarray] = []
+        for batch in loader:
+            control_expression = batch["control_expression"].to(self.device)
+            perturbation_index = batch["perturbation_index"].to(self.device)
+            batch_predictions = self.model(control_expression, perturbation_index)
+            predictions.append(batch_predictions.detach().cpu().numpy())
+            perturbations.append(perturbation_index.detach().cpu().numpy())
+        return (
+            np.concatenate(predictions, axis=0),
+            np.concatenate(perturbations, axis=0),
         )
 
     def save_checkpoint(self, filename: str) -> None:

@@ -15,9 +15,12 @@ class ProcessedDataset(Dataset):
     def __init__(self, bundle_dir: str | Path, split_name: str | None = None):
         bundle = load_processed_bundle(bundle_dir)
         all_indices = np.arange(len(bundle["perturbation_index"]), dtype=np.int64)
-        self.indices = (
-            bundle["splits"].get(split_name, all_indices) if split_name else all_indices
-        )
+        if split_name is None:
+            self.indices = all_indices
+        else:
+            if split_name not in bundle["splits"]:
+                raise KeyError(f"Unknown split_name={split_name!r} for bundle {bundle_dir}")
+            self.indices = bundle["splits"][split_name]
         self.control_expression = bundle["control_expression"]
         self.target_delta = bundle["target_delta"]
         self.perturbation_index = bundle["perturbation_index"]

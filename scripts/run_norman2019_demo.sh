@@ -7,6 +7,8 @@ cd "${ROOT_DIR}"
 export UV_CACHE_DIR="${ROOT_DIR}/.uv-cache"
 export UV_PROJECT_ENVIRONMENT="${ROOT_DIR}/.venv"
 export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
+mkdir -p "${ROOT_DIR}/.cache/matplotlib"
+export MPLCONFIGDIR="${ROOT_DIR}/.cache/matplotlib"
 
 RAW_PATH="${1:-data/raw/NormanWeissman2019_filtered.h5ad}"
 OUTPUT_DIR="${2:-data/processed/norman2019_demo_bundle}"
@@ -39,5 +41,5 @@ PY
 ./scripts/run_preprocess_demo.sh \
   --input-path "${RAW_PATH}" \
   --output-dir "${OUTPUT_DIR}" \
-  --hvg-top-genes 256 \
+  --hvg-top-genes 512 \
   --max-cells-per-perturbation 100

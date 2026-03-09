@@ -68,4 +68,4 @@ if [[ "${ACTUAL_MD5}" != "${EXPECTED_MD5}" ]]; then
   exit 1
 fi
 
-echo "Downloaded and verified ${TARGET_PATH}"
+###### echo "Downloaded and verified ${TARGET_PATH}"

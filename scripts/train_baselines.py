@@ -5,7 +5,9 @@ import json
 import sys
 from pathlib import Path
 
+import joblib
 import numpy as np
+import torch
 from torch.utils.data import DataLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -56,6 +58,19 @@ def _build_numpy_features(
     return np.concatenate([control_expression, one_hot], axis=1)
 
 
+def _evaluate_numpy_baseline(
+    *,
+    predictions: np.ndarray,
+    targets: np.ndarray,
+    perturbation_index: np.ndarray,
+) -> dict[str, float]:
+    return compute_regression_metrics(
+        predictions=predictions,
+        targets=targets,
+        perturbation_index=perturbation_index,
+    )
+
+
 def _train_xgboost(args: argparse.Namespace) -> None:
     bundle = load_processed_bundle(args.bundle_dir)
     splits = bundle["splits"]
@@ -73,24 +88,51 @@ def _train_xgboost(args: argparse.Namespace) -> None:
 
     model = build_xgboost_baseline()
     model.fit(features[train_idx], targets[train_idx])
-    predictions = model.predict(features[test_idx])
-    metrics = compute_regression_metrics(
-        predictions=predictions,
-        targets=targets[test_idx],
-        perturbation_index=bundle["perturbation_index"][test_idx],
-    )
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    with (output_dir / "xgboost_metrics.json").open("w", encoding="utf-8") as handle:
-        json.dump(metrics, handle, indent=2)
-    LOGGER.info("Saved XGBoost metrics to %s", output_dir / "xgboost_metrics.json")
+    joblib.dump(model, output_dir / "xgboost_model.joblib")
+
+    metrics_by_split: dict[str, dict[str, float]] = {}
+    eval_splits = [f"{args.split_prefix}_test"]
+    for candidate in ("seen_test", "unseen_test"):
+        if candidate in splits and candidate not in eval_splits:
+            eval_splits.append(candidate)
+
+    for split_name in eval_splits:
+        split_indices = splits[split_name]
+        predictions = model.predict(features[split_indices])
+        metrics = _evaluate_numpy_baseline(
+            predictions=predictions,
+            targets=targets[split_indices],
+            perturbation_index=bundle["perturbation_index"][split_indices],
+        )
+        metrics_by_split[split_name] = metrics
+        metrics_path = output_dir / f"xgboost_{split_name}_metrics.json"
+        with metrics_path.open("w", encoding="utf-8") as handle:
+            json.dump(metrics, handle, indent=2)
+        LOGGER.info("Saved XGBoost metrics to %s", metrics_path)
+
+    summary = {
+        "model_type": "xgboost",
+        "train_split_prefix": args.split_prefix,
+        "train_size": int(train_idx.shape[0]),
+        "feature_dim": int(features.shape[1]),
+        "target_dim": int(targets.shape[1]),
+        "num_perturbations": int(len(metadata["perturbation_names"])),
+        "xgboost_params": model.estimator.get_params(),
+        "metrics": metrics_by_split,
+    }
+    with (output_dir / "xgboost_run_summary.json").open("w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2)
+    LOGGER.info("Saved XGBoost summary to %s", output_dir / "xgboost_run_summary.json")
 
 
 def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     train_config_payload = load_yaml(train_config_path)
     seed_everything(int(train_config_payload["train"]["seed"]))
     trainer_config = TrainerConfig.from_dict(train_config_payload)
+    bundle = load_processed_bundle(args.bundle_dir)
 
     train_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_train")
     val_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_val")
@@ -114,6 +156,24 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     )
     trainer = Trainer(model=model, config=trainer_config, output_dir=args.output_dir)
     trainer.fit(train_loader, val_loader)
+    checkpoint_path = Path(args.output_dir) / "best_model.pt"
+    trainer.model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
+
+    for split_name in ("seen_test", "unseen_test"):
+        if split_name not in bundle["splits"]:
+            continue
+        eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
+        eval_loader = DataLoader(
+            eval_dataset,
+            batch_size=trainer_config.batch_size,
+            shuffle=False,
+            num_workers=trainer_config.num_workers,
+        )
+        metrics = trainer.evaluate(eval_loader)
+        metrics_path = Path(args.output_dir) / f"mlp_{split_name}_metrics.json"
+        with metrics_path.open("w", encoding="utf-8") as handle:
+            json.dump(metrics, handle, indent=2)
+        LOGGER.info("Saved MLP metrics to %s", metrics_path)
 
 
 def main() -> None:

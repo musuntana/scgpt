@@ -64,6 +64,18 @@ Start the Streamlit app:
 ./scripts/run_app.sh
 ```
 
+The app defaults to the real local demo artifacts:
+- bundle: `data/processed/norman2019_demo_bundle`
+- artifact dir: `artifacts/transformer_seen_norman2019_demo`
+- checkpoint: `<artifact dir>/best_model.pt`
+
+Current app behavior:
+- load a saved torch checkpoint
+- select a perturbation gene from the processed bundle
+- run aggregated inference for that perturbation
+- if `deg_artifact.csv` exists in the artifact directory, combine predicted delta with real DEG significance
+- show predicted vs observed delta, top predicted genes, true DEG rows, target ranking, and top-k DEG overlap
+
 Preprocess a dataset bundle:
 
 ```bash
@@ -109,6 +121,20 @@ Train baselines:
   --baseline mlp
 ```
 
+The baseline output directory stores split-specific metrics:
+- `mlp_seen_test_metrics.json` and `mlp_unseen_test_metrics.json`
+- `xgboost_seen_test_metrics.json` and `xgboost_unseen_test_metrics.json`
+- `xgboost_model.joblib` and `xgboost_run_summary.json` for the tree baseline
+
+Generate a real DEG artifact for app ranking:
+
+```bash
+./scripts/run_generate_deg_artifact.sh \
+  --input-path data/raw/NormanWeissman2019_filtered.h5ad \
+  --bundle-dir data/processed/norman2019_demo_bundle \
+  --output-dir artifacts/transformer_seen_norman2019_demo
+```
+
 Evaluate a saved model:
 
 ```bash
@@ -116,7 +142,68 @@ Evaluate a saved model:
   --bundle-dir data/processed/demo_bundle \
   --checkpoint-path artifacts/transformer_seen/best_model.pt \
   --model-type transformer \
-  --output-path artifacts/transformer_seen/test_metrics.json
+  --output-path artifacts/transformer_seen/test_metrics.json \
+  --deg-artifact-path artifacts/transformer_seen/deg_artifact.csv
+```
+
+When `--deg-artifact-path` is provided, the evaluation also computes top-k DEG overlap metrics.
+
+Write a structured local run summary:
+
+```bash
+./scripts/run_summarize_run.sh \
+  --bundle-dir data/processed/demo_bundle \
+  --output-dir artifacts/transformer_seen \
+  --checkpoint-path artifacts/transformer_seen/best_model.pt \
+  --model-type transformer \
+  --split-prefix seen \
+  --seen-metrics-path artifacts/transformer_seen/seen_test_metrics.json \
+  --unseen-metrics-path artifacts/transformer_seen/unseen_test_metrics.json
+```
+
+## Results
+
+This repository already includes one complete local run on the real `Norman2019` demo bundle:
+- bundle: `10500` samples, `256` genes, `105` perturbations
+- primary metric: `pearson_per_perturbation`
+- artifact summaries:
+  - [`artifacts/transformer_seen_norman2019_demo/run_summary.json`](/Users/musun/Desktop/scgpt/artifacts/transformer_seen_norman2019_demo/run_summary.json)
+  - [`artifacts/mlp_seen_norman2019_demo/run_summary.json`](/Users/musun/Desktop/scgpt/artifacts/mlp_seen_norman2019_demo/run_summary.json)
+  - [`artifacts/xgboost_seen_norman2019_demo/xgboost_run_summary.json`](/Users/musun/Desktop/scgpt/artifacts/xgboost_seen_norman2019_demo/xgboost_run_summary.json)
+
+### Model Comparison
+
+![Norman2019 demo bundle model comparison](docs/assets/model_comparison_seen_norman2019_demo.png)
+
+| Model | Best Val Pearson | Seen Test Pearson | Seen Test MSE | Unseen Test Pearson | Unseen Test MSE |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Transformer | 0.6430 | 0.6523 | 0.0518 | 0.8652 | 0.0503 |
+| MLP | 0.6366 | 0.6420 | 0.0520 | 0.8706 | 0.0503 |
+| XGBoost | n/a | 0.6285 | 0.0526 | 0.8213 | 0.0494 |
+
+Interpretation:
+- Transformer is the strongest model on the main `seen_test` metric.
+- MLP is close to Transformer and serves as a strong low-complexity baseline.
+- XGBoost is competitive on MSE but trails on the main `per-perturbation Pearson` metric.
+- `unseen_test` is easier than `seen_test` on this demo bundle, so this should be reported carefully.
+
+### Streamlit Preview
+
+![Transformer inference preview](docs/assets/transformer_inference_preview.png)
+
+The preview above is generated from the same checkpoint and bundle that the Streamlit app loads by default.
+When `artifacts/transformer_seen_norman2019_demo/deg_artifact.csv` exists, the ranking panel uses
+`predicted_delta + DEG significance` instead of prediction-only scoring.
+Launch the interactive app locally with:
+
+```bash
+./scripts/run_app.sh
+```
+
+Regenerate the README result assets with:
+
+```bash
+./scripts/run_generate_results_assets.sh
 ```
 
 ## Repository Documents
@@ -135,11 +222,13 @@ Evaluate a saved model:
 3. optionally inspect schema resolution with `./scripts/run_inspect_anndata.sh`
 4. preprocess it into a bundle under `data/processed/`
 5. train a minimal Transformer on the seen split
-6. evaluate metrics and inspect ranking outputs
-7. start Streamlit to inspect the bundle or future inference artifacts
+6. evaluate seen and unseen metrics
+7. write `run_summary.json` for the completed experiment
+8. inspect ranking outputs or start Streamlit for demo artifacts
 
 ## Notes
 
 - `requirements.txt` is kept as a compatibility fallback; update `pyproject.toml` first and refresh `uv.lock` with `uv sync`.
 - the shell wrappers export `UV_PROJECT_ENVIRONMENT`, `UV_CACHE_DIR`, and `PYTHONPATH` so the project can be run consistently from the repo root
 - if you change runtime dependencies, resync with `./scripts/bootstrap_env.sh`
+- each meaningful local training run should keep `history.json`, `best_model.pt`, evaluation JSONs, and `run_summary.json` in the same artifact directory

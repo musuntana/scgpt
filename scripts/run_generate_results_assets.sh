@@ -10,4 +10,4 @@ export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
 mkdir -p "${ROOT_DIR}/.cache/matplotlib"
 export MPLCONFIGDIR="${ROOT_DIR}/.cache/matplotlib"
 
-uv run python scripts/train_transformer.py "$@"
+uv run python scripts/generate_results_assets.py "$@"

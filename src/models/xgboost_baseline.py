@@ -22,6 +22,7 @@ def build_xgboost_baseline(params: dict[str, Any] | None = None):
         "colsample_bytree": 0.8,
         "objective": "reg:squarederror",
         "n_jobs": 1,
+        "random_state": 42,
     }
     if params:
         default_params.update(params)

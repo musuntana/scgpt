@@ -82,6 +82,18 @@ This generates a clearly labeled synthetic bundle and demo artifacts:
 
 When the real Norman2019 demo artifacts are absent but the synthetic ones exist, the Streamlit app will default to the synthetic paths automatically.
 
+Generate the full offline showcase, including baselines and result figures:
+
+```bash
+./scripts/run_generate_synthetic_showcase.sh
+```
+
+This also produces:
+- `artifacts/mlp_seen_synthetic_demo/`
+- `artifacts/xgboost_seen_synthetic_demo/`
+- `docs/assets/model_comparison_seen_synthetic_demo.png`
+- `docs/assets/transformer_inference_preview_synthetic_demo.png`
+
 Current app behavior:
 - load a saved torch checkpoint
 - select a perturbation gene from the processed bundle
@@ -217,6 +229,12 @@ Regenerate the README result assets with:
 
 ```bash
 ./scripts/run_generate_results_assets.sh
+```
+
+For the offline synthetic showcase:
+
+```bash
+./scripts/run_generate_synthetic_showcase.sh
 ```
 
 ## Repository Documents

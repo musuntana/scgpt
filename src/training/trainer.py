@@ -41,7 +41,7 @@ class TrainerConfig:
     checkpoint_metric: str = "pearson_per_perturbation"
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "TrainerConfig":
+    def from_dict(cls, payload: dict[str, Any]) -> TrainerConfig:
         train_cfg = payload.get("train", payload)
         return cls(
             device=str(train_cfg.get("device", "auto")),

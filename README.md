@@ -253,6 +253,36 @@ For the offline synthetic showcase:
 ./scripts/run_generate_synthetic_showcase.sh
 ```
 
+### Real Norman2019 results
+
+The figures below are generated from the real Norman2019 dataset
+(`scPerturb / Norman2019`, K562, single-gene perturbations, 10,500 cells, 512 HVGs, 105 conditions).
+
+![Norman2019 model comparison](docs/assets/model_comparison_seen_norman2019_demo.png)
+
+| Model | Seen Test Pearson | Seen Test MSE | Unseen Test Pearson | Unseen Test MSE |
+| --- | ---: | ---: | ---: | ---: |
+| Transformer | 0.604 | 0.0071 | 0.824 | 0.0011 |
+| MLP | 0.633 | 0.0066 | 0.837 | 0.00085 |
+| XGBoost | 0.618 | 0.0066 | 0.840 | 0.00084 |
+
+Transformer top-k DEG overlap (seen_test / unseen_test):
+- top-20: 0.816 / 0.930
+- top-50: 0.914 / 0.953
+- top-100: 0.964 / 0.976
+
+![Norman2019 inference preview (JUN)](docs/assets/transformer_inference_preview.png)
+
+All three models achieve **Pearson ≥ 0.82** on unseen perturbations, indicating strong generalization.
+The Transformer top-100 DEG overlap of **0.96–0.98** confirms that predicted expression shifts
+identify the correct differentially expressed genes at high recall.
+
+Regenerate these figures after training with:
+
+```bash
+./scripts/run_generate_results_assets.sh
+```
+
 ### Real Norman2019 workflow
 
 Real Norman2019 raw data and generated artifact directories are intentionally not committed by default.

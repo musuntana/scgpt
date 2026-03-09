@@ -79,7 +79,6 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     metadata = bundle["metadata"]
 
     train_idx = splits[f"{args.split_prefix}_train"]
-    test_idx = splits[f"{args.split_prefix}_test"]
 
     features = _build_numpy_features(
         bundle["control_expression"],

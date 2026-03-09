@@ -50,17 +50,15 @@ def test_build_synthetic_deg_artifact_contains_expected_schema():
     )
 
     assert not deg_df.empty
-    assert set(
-        [
-            "perturbation",
-            "rank",
-            "gene",
-            "logfoldchange",
-            "adjusted_p_value",
-            "score",
-            "deg_significance",
-            "perturbation_cell_count",
-            "control_cell_count",
-        ]
-    ).issubset(deg_df.columns)
+    assert {
+        "perturbation",
+        "rank",
+        "gene",
+        "logfoldchange",
+        "adjusted_p_value",
+        "score",
+        "deg_significance",
+        "perturbation_cell_count",
+        "control_cell_count",
+    }.issubset(deg_df.columns)
     assert set(deg_df["perturbation"]) == {"JUN", "STAT1"}

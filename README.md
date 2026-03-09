@@ -309,6 +309,24 @@ After the real bundle exists, regenerate real-data figures with:
 ./scripts/run_generate_results_assets.sh
 ```
 
+## Notebooks
+
+The `notebooks/` directory contains two runnable Jupyter notebooks.
+Launch them with:
+
+```bash
+source .venv/bin/activate
+jupyter lab notebooks/
+```
+
+| Notebook | Description |
+| --- | --- |
+| [`01_data_exploration.ipynb`](notebooks/01_data_exploration.ipynb) | EDA of the Norman2019 bundle: dataset overview, perturbation frequency, control-mean distributions, delta-expression histogram, per-perturbation heatmap |
+| [`02_model_comparison.ipynb`](notebooks/02_model_comparison.ipynb) | Side-by-side metrics for Transformer, MLP, XGBoost; training curves; top-k DEG overlap bar charts; summary table |
+
+Both notebooks load from `data/processed/norman2019_demo_bundle` and `artifacts/`.
+Run `./scripts/run_norman2019_demo.sh` first to generate the required bundle.
+
 ## Repository Documents
 
 - [`PROJECT_PLAN.md`](PROJECT_PLAN.md): development plan and architecture decisions

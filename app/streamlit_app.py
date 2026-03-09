@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
-from typing import Optional
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,6 +24,7 @@ from src.evaluation.inference import (
 )
 from src.evaluation.metrics import topk_overlap
 from src.ranking.target_ranking import build_target_ranking
+from src.utils.comparison import scan_artifact_comparison_rows
 from src.utils.config import load_yaml
 
 REAL_BUNDLE_DIR = "data/processed/norman2019_demo_bundle"
@@ -83,54 +83,6 @@ def load_optional_list(path: str) -> list:
     return data if isinstance(data, list) else []
 
 
-def _extract_summary_row(summary: dict, label: str) -> Optional[dict]:
-    """Return a flat metrics dict from a run_summary.json or xgboost_run_summary.json."""
-    # Transformer / MLP layout
-    test_metrics = summary.get("test_metrics") or summary.get("metrics")
-    if not test_metrics:
-        return None
-    seen = test_metrics.get("seen_test", {})
-    unseen = test_metrics.get("unseen_test", {})
-    return {
-        "model": label,
-        "seen_pearson": seen.get("pearson_per_perturbation"),
-        "seen_mse": seen.get("mse_per_perturbation"),
-        "unseen_pearson": unseen.get("pearson_per_perturbation"),
-        "unseen_mse": unseen.get("mse_per_perturbation"),
-        "seen_top20_deg": seen.get("topk_deg_overlap_20"),
-        "seen_top100_deg": seen.get("topk_deg_overlap_100"),
-        "unseen_top20_deg": unseen.get("topk_deg_overlap_20"),
-        "unseen_top100_deg": unseen.get("topk_deg_overlap_100"),
-    }
-
-
-@st.cache_data(show_spinner=False)
-def collect_model_comparison_rows(artifact_root: str) -> list[dict]:
-    """Scan artifact_root subdirectories for run_summary files and build comparison rows."""
-    root = Path(artifact_root)
-    rows: list[dict] = []
-    if not root.exists():
-        return rows
-    for sub in sorted(root.iterdir()):
-        if not sub.is_dir():
-            continue
-        label = sub.name
-        # Standard torch model summary
-        rs_path = sub / "run_summary.json"
-        if rs_path.exists():
-            summary = read_json(rs_path)
-            row = _extract_summary_row(summary, label)
-            if row:
-                rows.append(row)
-            continue
-        # XGBoost summary
-        xgb_path = sub / "xgboost_run_summary.json"
-        if xgb_path.exists():
-            summary = read_json(xgb_path)
-            row = _extract_summary_row(summary, label)
-            if row:
-                rows.append(row)
-    return rows
 
 
 def _bar_chart(ax, models: list[str], seen_vals: list, unseen_vals: list, ylabel: str, title: str):
@@ -444,7 +396,7 @@ with inference_tab:
 with comparison_tab:
  st.subheader("Model Comparison — test-set metrics")
  artifact_root = str(artifact_dir.parent)
- rows = collect_model_comparison_rows(artifact_root)
+ rows = scan_artifact_comparison_rows(artifact_root)
  if not rows:
      st.warning(f"No run_summary.json files found under `{artifact_root}`.")
  else:

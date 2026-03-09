@@ -41,7 +41,7 @@ def _matrix_to_dense(matrix) -> np.ndarray:
 
 def _make_group_key(row: pd.Series, group_columns: list[str]) -> tuple[str, ...]:
     if not group_columns:
-        return tuple()
+        return ()
     return tuple(str(row[column]) for column in group_columns)
 
 

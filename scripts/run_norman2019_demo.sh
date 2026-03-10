@@ -16,7 +16,10 @@ SCHEMA_JSON="${3:-data/interim/norman2019_schema.json}"
 
 if [[ ! -f "${RAW_PATH}" ]]; then
   echo "Missing raw dataset: ${RAW_PATH}" >&2
-  echo "Download it first with: ./scripts/download_norman2019.sh" >&2
+  echo "Try: ./scripts/download_norman2019.sh ${RAW_PATH}" >&2
+  echo "If curl is unstable, retry with: ./scripts/download_norman2019.sh --backend wget ${RAW_PATH}" >&2
+  echo "If you placed the file manually, verify it with: ./scripts/download_norman2019.sh --verify-only ${RAW_PATH}" >&2
+  echo "If you need an immediate demo, continue with: ./scripts/run_generate_synthetic_showcase.sh" >&2
   exit 1
 fi
 

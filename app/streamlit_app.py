@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -23,12 +24,38 @@ from src.evaluation.inference import (
 )
 from src.evaluation.metrics import topk_overlap
 from src.ranking.target_ranking import build_target_ranking
+from src.utils.comparison import scan_artifact_comparison_rows
 from src.utils.config import load_yaml
 
-DEFAULT_BUNDLE_DIR = "data/processed/norman2019_demo_bundle"
-DEFAULT_ARTIFACT_DIR = "artifacts/transformer_seen_norman2019_demo"
-DEFAULT_MODEL_CONFIG = "configs/model.yaml"
-DEFAULT_TRAIN_CONFIG = "configs/train.yaml"
+REAL_BUNDLE_DIR = "data/processed/norman2019_demo_bundle"
+REAL_ARTIFACT_DIR = "artifacts/transformer_seen_norman2019_demo"
+SYNTHETIC_BUNDLE_DIR = "data/processed/synthetic_demo_bundle"
+SYNTHETIC_ARTIFACT_DIR = "artifacts/transformer_seen_synthetic_demo"
+REAL_MODEL_CONFIG = "configs/model.yaml"
+REAL_TRAIN_CONFIG = "configs/train.yaml"
+SYNTHETIC_MODEL_CONFIG = "configs/model_synthetic_demo.yaml"
+SYNTHETIC_TRAIN_CONFIG = "configs/train_synthetic_demo.yaml"
+
+
+def resolve_default_demo_paths() -> tuple[str, str, str, str]:
+    if Path(REAL_BUNDLE_DIR).exists() or Path(REAL_ARTIFACT_DIR).exists():
+        return REAL_BUNDLE_DIR, REAL_ARTIFACT_DIR, REAL_MODEL_CONFIG, REAL_TRAIN_CONFIG
+    if Path(SYNTHETIC_BUNDLE_DIR).exists() or Path(SYNTHETIC_ARTIFACT_DIR).exists():
+        return (
+            SYNTHETIC_BUNDLE_DIR,
+            SYNTHETIC_ARTIFACT_DIR,
+            SYNTHETIC_MODEL_CONFIG,
+            SYNTHETIC_TRAIN_CONFIG,
+        )
+    return REAL_BUNDLE_DIR, REAL_ARTIFACT_DIR, REAL_MODEL_CONFIG, REAL_TRAIN_CONFIG
+
+
+(
+    DEFAULT_BUNDLE_DIR,
+    DEFAULT_ARTIFACT_DIR,
+    DEFAULT_MODEL_CONFIG,
+    DEFAULT_TRAIN_CONFIG,
+) = resolve_default_demo_paths()
 
 
 @st.cache_data(show_spinner=False)
@@ -42,6 +69,32 @@ def load_optional_json(path: str) -> dict:
     if not file_path.exists():
         return {}
     return read_json(file_path)
+
+
+@st.cache_data(show_spinner=False)
+def load_optional_list(path: str) -> list:
+    """Load a JSON file that is expected to be a list (e.g. history.json)."""
+    file_path = Path(path)
+    if not file_path.exists():
+        return []
+    import json
+    with open(file_path) as fh:
+        data = json.load(fh)
+    return data if isinstance(data, list) else []
+
+
+
+
+def _bar_chart(ax, models: list[str], seen_vals: list, unseen_vals: list, ylabel: str, title: str):
+    x = np.arange(len(models))
+    width = 0.35
+    ax.bar(x - width / 2, seen_vals, width, label="seen test", color="steelblue")
+    ax.bar(x + width / 2, unseen_vals, width, label="unseen test", color="coral")
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=15, ha="right", fontsize=8)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend(fontsize=8)
 
 
 @st.cache_data(show_spinner=False)
@@ -94,7 +147,7 @@ def top_gene_frame(comparison_df: pd.DataFrame, column: str, ascending: bool, to
 
 st.set_page_config(page_title="PerturbScope-GPT", layout="wide")
 st.title("PerturbScope-GPT")
-st.caption("Local-first single-cell perturbation response demo")
+st.caption("Local-first single-cell perturbation response demo · Norman2019 K562")
 
 bundle_dir = Path(
     st.sidebar.text_input(
@@ -135,7 +188,8 @@ if not checkpoint_path.exists():
     st.info(
         "Checkpoint is missing. Train a torch model first, for example "
         "`./scripts/run_train_transformer.sh --bundle-dir data/processed/norman2019_demo_bundle "
-        "--output-dir artifacts/transformer_seen_norman2019_demo`."
+        "--output-dir artifacts/transformer_seen_norman2019_demo`, "
+        "or generate an offline demo with `./scripts/run_generate_synthetic_demo.sh`."
     )
     st.stop()
 
@@ -144,6 +198,7 @@ run_summary = load_optional_json(str(run_summary_path))
 deg_metadata = load_optional_json(str(deg_metadata_path))
 deg_artifact = load_optional_deg_artifact(str(deg_artifact_path))
 train_config = load_yaml(train_config_path)
+history = load_optional_list(str(artifact_dir / "history.json"))
 model = load_model_cached(
     bundle_dir=str(bundle_dir),
     checkpoint_path=str(checkpoint_path),
@@ -158,178 +213,276 @@ selected_perturbation = st.sidebar.selectbox(
 )
 top_n = int(st.sidebar.slider("Top genes to display", min_value=10, max_value=30, value=15))
 
-st.subheader("Artifact Summary")
-left, center, right = st.columns(3)
-left.metric("Samples", len(bundle["perturbation_index"]))
-center.metric("Genes", len(metadata["gene_names"]))
-right.metric("Perturbations", len(metadata["perturbation_names"]))
-
-if run_summary:
-    dataset = run_summary.get("dataset", {})
-    validation = run_summary.get("validation", {})
-    metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
-    metrics_col1.metric("Cell Context", dataset.get("cell_context", "unknown"))
-    metrics_col2.metric("Best Val Epoch", validation.get("best_epoch", "n/a"))
-    best_validation = validation.get("best_validation", {})
-    metrics_col3.metric(
-        "Best Val Pearson",
-        f"{best_validation.get('pearson_per_perturbation', 0.0):.4f}",
-    )
-
-deg_col1, deg_col2, deg_col3 = st.columns(3)
-deg_col1.metric("DEG Artifact", "loaded" if not deg_artifact.empty else "missing")
-deg_col2.metric(
-    "DEG Rows",
-    int(len(deg_artifact)) if not deg_artifact.empty else 0,
-)
-deg_col3.metric(
-    "Ranking Mode",
-    "predicted + DEG" if not deg_artifact.empty else "prediction-only",
+inference_tab, comparison_tab, history_tab = st.tabs(
+    ["🔬 Inference", "📊 Model Comparison", "📈 Training History"]
 )
 
-batch = build_perturbation_batch(bundle, selected_perturbation)
-predicted_delta = predict_delta_for_batch(model, batch)
-comparison_df = build_gene_comparison_frame(
-    gene_names=metadata["gene_names"],
-    predicted_delta=predicted_delta,
-    observed_delta=batch.observed_delta_mean,
-)
-fit_metrics = summarize_perturbation_fit(
-    predicted_delta=predicted_delta,
-    observed_delta=batch.observed_delta_mean,
-)
-selected_deg_df = pd.DataFrame()
-if not deg_artifact.empty:
-    selected_deg_df = deg_artifact[deg_artifact["perturbation"] == selected_perturbation].copy()
+with inference_tab:
+ st.subheader("Artifact Summary")
+ left, center, right = st.columns(3)
+ left.metric("Samples", len(bundle["perturbation_index"]))
+ center.metric("Genes", len(metadata["gene_names"]))
+ right.metric("Perturbations", len(metadata["perturbation_names"]))
 
-ranking_config = train_config.get("ranking", {})
-if selected_deg_df.empty:
-    abs_predicted_delta_weight = 1.0
-    deg_significance_weight = 0.0
-else:
-    abs_predicted_delta_weight = float(ranking_config.get("abs_predicted_delta_weight", 0.5))
-    deg_significance_weight = float(ranking_config.get("deg_significance_weight", 0.5))
+ if run_summary:
+     dataset = run_summary.get("dataset", {})
+     validation = run_summary.get("validation", {})
+     metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
+     metrics_col1.metric("Cell Context", dataset.get("cell_context", "unknown"))
+     metrics_col2.metric("Best Val Epoch", validation.get("best_epoch", "n/a"))
+     best_validation = validation.get("best_validation", {})
+     metrics_col3.metric(
+         "Best Val Pearson",
+         f"{best_validation.get('pearson_per_perturbation', 0.0):.4f}",
+     )
 
-ranking_df = build_target_ranking(
-    gene_names=metadata["gene_names"],
-    predicted_delta=predicted_delta,
-    deg_df=selected_deg_df,
-    abs_predicted_delta_weight=abs_predicted_delta_weight,
-    deg_significance_weight=deg_significance_weight,
-)
+ deg_col1, deg_col2, deg_col3 = st.columns(3)
+ deg_col1.metric("DEG Artifact", "loaded" if not deg_artifact.empty else "missing")
+ deg_col2.metric(
+     "DEG Rows",
+     int(len(deg_artifact)) if not deg_artifact.empty else 0,
+ )
+ deg_col3.metric(
+     "Ranking Mode",
+     "predicted + DEG" if not deg_artifact.empty else "prediction-only",
+ )
 
-# Compute top-k overlap when DEG artifact is available
-topk_k = 20
-topk_overlap_value = None
-if not selected_deg_df.empty:
-    predicted_top_genes = (
-        comparison_df.sort_values("abs_predicted_delta", ascending=False)["gene"]
-        .tolist()[:topk_k]
-    )
-    true_top_genes = selected_deg_df["gene"].tolist()[:topk_k]
-    if true_top_genes:
-        topk_overlap_value = topk_overlap(predicted_top_genes, true_top_genes, topk_k)
+ batch = build_perturbation_batch(bundle, selected_perturbation)
+ predicted_delta = predict_delta_for_batch(model, batch)
+ comparison_df = build_gene_comparison_frame(
+     gene_names=metadata["gene_names"],
+     predicted_delta=predicted_delta,
+     observed_delta=batch.observed_delta_mean,
+ )
+ fit_metrics = summarize_perturbation_fit(
+     predicted_delta=predicted_delta,
+     observed_delta=batch.observed_delta_mean,
+ )
+ selected_deg_df = pd.DataFrame()
+ if not deg_artifact.empty:
+     selected_deg_df = deg_artifact[deg_artifact["perturbation"] == selected_perturbation].copy()
 
-st.subheader(f"Inference: {selected_perturbation}")
-if topk_overlap_value is not None:
-    metric1, metric2, metric3, metric4 = st.columns(4)
-else:
-    metric1, metric2, metric3 = st.columns(3)
-    metric4 = None
-metric1.metric("Matched Samples", batch.sample_count)
-metric2.metric("Aggregated Pearson", f"{fit_metrics['pearson']:.4f}")
-metric3.metric("Aggregated MSE", f"{fit_metrics['mse']:.4f}")
-if metric4 is not None and topk_overlap_value is not None:
-    metric4.metric(f"Top-{topk_k} DEG Overlap", f"{topk_overlap_value:.4f}")
+ ranking_config = train_config.get("ranking", {})
+ if selected_deg_df.empty:
+     abs_predicted_delta_weight = 1.0
+     deg_significance_weight = 0.0
+ else:
+     abs_predicted_delta_weight = float(ranking_config.get("abs_predicted_delta_weight", 0.5))
+     deg_significance_weight = float(ranking_config.get("deg_significance_weight", 0.5))
 
-st.caption(
-    "Reference control is the mean matched control profile already stored in the processed bundle "
-    "for the selected perturbation. Observed delta is the mean target delta across bundle samples "
-    "for this perturbation."
-)
-if selected_deg_df.empty:
-    st.warning(
-        "No DEG rows were found for this perturbation. Ranking is currently prediction-only. "
-        "Generate a DEG artifact with `./scripts/run_generate_deg_artifact.sh` and place it in the artifact directory."
-    )
-else:
-    deg_caption = (
-        f"Loaded {len(selected_deg_df)} DEG rows for this perturbation"
-    )
-    if deg_metadata:
-        deg_config = deg_metadata.get("deg", {})
-        deg_caption += (
-            f" using method={deg_config.get('method', 'unknown')}, "
-            f"adj_p<{deg_config.get('adjusted_pvalue_threshold', 'n/a')}, "
-            f"|logFC|>{deg_config.get('abs_logfoldchange_threshold', 'n/a')}"
-        )
-    st.caption(deg_caption)
+ ranking_df = build_target_ranking(
+     gene_names=metadata["gene_names"],
+     predicted_delta=predicted_delta,
+     deg_df=selected_deg_df,
+     abs_predicted_delta_weight=abs_predicted_delta_weight,
+     deg_significance_weight=deg_significance_weight,
+ )
 
-plot_col, ranking_col = st.columns([3, 2])
-with plot_col:
-    scatter_figure = plot_prediction_scatter(comparison_df)
-    st.pyplot(scatter_figure, use_container_width=True)
-    plt.close(scatter_figure)
+ # Compute top-k overlap when DEG artifact is available
+ topk_k = 20
+ topk_overlap_value = None
+ if not selected_deg_df.empty:
+     predicted_top_genes = (
+         comparison_df.sort_values("abs_predicted_delta", ascending=False)["gene"]
+         .tolist()[:topk_k]
+     )
+     true_top_genes = selected_deg_df["gene"].tolist()[:topk_k]
+     if true_top_genes:
+         topk_overlap_value = topk_overlap(predicted_top_genes, true_top_genes, topk_k)
 
-with ranking_col:
-    st.write("Top Target Ranking")
-    st.dataframe(
-        ranking_df.loc[
-            :,
-            ["rank", "gene", "predicted_delta", "deg_significance", "importance_score"],
-        ].head(top_n),
-        use_container_width=True,
-        height=460,
-    )
+ st.subheader(f"Inference: {selected_perturbation}")
+ if topk_overlap_value is not None:
+     metric1, metric2, metric3, metric4 = st.columns(4)
+ else:
+     metric1, metric2, metric3 = st.columns(3)
+     metric4 = None
+ metric1.metric("Matched Samples", batch.sample_count)
+ metric2.metric("Aggregated Pearson", f"{fit_metrics['pearson']:.4f}")
+ metric3.metric("Aggregated MSE", f"{fit_metrics['mse']:.4f}")
+ if metric4 is not None and topk_overlap_value is not None:
+     metric4.metric(f"Top-{topk_k} DEG Overlap", f"{topk_overlap_value:.4f}")
 
-up_col, down_col = st.columns(2)
-with up_col:
-    st.write("Top Predicted Up Genes")
-    st.dataframe(
-        top_gene_frame(comparison_df, column="predicted_delta", ascending=False, top_n=top_n),
-        use_container_width=True,
-        height=380,
-    )
+ st.caption(
+     "Reference control is the mean matched control profile already stored in the processed bundle "
+     "for the selected perturbation. Observed delta is the mean target delta across bundle samples "
+     "for this perturbation."
+ )
+ if selected_deg_df.empty:
+     st.warning(
+         "No DEG rows were found for this perturbation. Ranking is currently prediction-only. "
+         "Generate a DEG artifact with `./scripts/run_generate_deg_artifact.sh` and place it in the artifact directory."
+     )
+ else:
+     deg_caption = f"Loaded {len(selected_deg_df)} DEG rows for this perturbation"
+     if deg_metadata:
+         deg_config = deg_metadata.get("deg", {})
+         deg_caption += (
+             f" using method={deg_config.get('method', 'unknown')}, "
+             f"adj_p<{deg_config.get('adjusted_pvalue_threshold', 'n/a')}, "
+             f"|logFC|>{deg_config.get('abs_logfoldchange_threshold', 'n/a')}"
+         )
+     st.caption(deg_caption)
 
-with down_col:
-    st.write("Top Predicted Down Genes")
-    st.dataframe(
-        top_gene_frame(comparison_df, column="predicted_delta", ascending=True, top_n=top_n),
-        use_container_width=True,
-        height=380,
-    )
+ plot_col, ranking_col = st.columns([3, 2])
+ with plot_col:
+     scatter_figure = plot_prediction_scatter(comparison_df)
+     st.pyplot(scatter_figure, use_container_width=True)
+     plt.close(scatter_figure)
 
-if not selected_deg_df.empty:
-    st.subheader("True DEG Artifact")
-    st.dataframe(
-        selected_deg_df.loc[
-            :,
-            [
-                "rank",
-                "gene",
-                "logfoldchange",
-                "adjusted_p_value",
-                "deg_significance",
-                "score",
-            ],
-        ].head(50),
-        use_container_width=True,
-        height=420,
-    )
+ with ranking_col:
+     st.write("Top Target Ranking")
+     st.dataframe(
+         ranking_df.loc[
+             :,
+             ["rank", "gene", "predicted_delta", "deg_significance", "importance_score"],
+         ].head(top_n),
+         use_container_width=True,
+         height=460,
+     )
 
-st.subheader("Gene-Level Comparison")
-st.dataframe(
-    comparison_df.loc[
-        :,
-        [
-            "gene",
-            "predicted_delta",
-            "observed_delta",
-            "residual",
-            "abs_predicted_delta",
-            "abs_residual",
-        ],
-    ],
-    use_container_width=True,
-    height=520,
-)
+ up_col, down_col = st.columns(2)
+ with up_col:
+     st.write("Top Predicted Up Genes")
+     st.dataframe(
+         top_gene_frame(comparison_df, column="predicted_delta", ascending=False, top_n=top_n),
+         use_container_width=True,
+         height=380,
+     )
+
+ with down_col:
+     st.write("Top Predicted Down Genes")
+     st.dataframe(
+         top_gene_frame(comparison_df, column="predicted_delta", ascending=True, top_n=top_n),
+         use_container_width=True,
+         height=380,
+     )
+
+ if not selected_deg_df.empty:
+     st.subheader("True DEG Artifact")
+     st.dataframe(
+         selected_deg_df.loc[
+             :,
+             [
+                 "rank",
+                 "gene",
+                 "logfoldchange",
+                 "adjusted_p_value",
+                 "deg_significance",
+                 "score",
+             ],
+         ].head(50),
+         use_container_width=True,
+         height=420,
+     )
+
+ st.subheader("Gene-Level Comparison")
+ st.dataframe(
+     comparison_df.loc[
+         :,
+         [
+             "gene",
+             "predicted_delta",
+             "observed_delta",
+             "residual",
+             "abs_predicted_delta",
+             "abs_residual",
+         ],
+     ],
+     use_container_width=True,
+     height=520,
+ )
+
+# ── Model Comparison tab ─────────────────────────────────────────────────────
+with comparison_tab:
+ st.subheader("Model Comparison — test-set metrics")
+ artifact_root = str(artifact_dir.parent)
+ rows = scan_artifact_comparison_rows(artifact_root)
+ if not rows:
+     st.warning(f"No run_summary.json files found under `{artifact_root}`.")
+ else:
+     df_cmp = pd.DataFrame(rows).set_index("model")
+
+     # Numeric formatting for display
+     display_cols = {
+         "seen_pearson": "Seen Pearson",
+         "seen_mse": "Seen MSE (per-pert)",
+         "unseen_pearson": "Unseen Pearson",
+         "unseen_mse": "Unseen MSE (per-pert)",
+         "seen_top20_deg": "Seen Top-20 DEG",
+         "seen_top100_deg": "Seen Top-100 DEG",
+         "unseen_top20_deg": "Unseen Top-20 DEG",
+         "unseen_top100_deg": "Unseen Top-100 DEG",
+     }
+     df_display = (
+         df_cmp[[c for c in display_cols if c in df_cmp.columns]]
+         .rename(columns=display_cols)
+     )
+     st.dataframe(df_display.style.format("{:.4f}", na_rep="—"), use_container_width=True)
+
+     # Bar charts — Pearson and MSE
+     pearson_models = [r["model"] for r in rows if r.get("seen_pearson") is not None]
+     if pearson_models:
+         fig_cmp, (ax_p, ax_m) = plt.subplots(1, 2, figsize=(12, 4))
+         seen_p = [r["seen_pearson"] for r in rows if r.get("seen_pearson") is not None]
+         unseen_p = [r["unseen_pearson"] for r in rows if r.get("unseen_pearson") is not None]
+         seen_mse = [r["seen_mse"] for r in rows if r.get("seen_mse") is not None]
+         unseen_mse = [r["unseen_mse"] for r in rows if r.get("unseen_mse") is not None]
+
+         short_labels = [
+             m.replace("_seen_norman2019_demo", "").replace("_seen_synthetic_demo", "")
+             for m in pearson_models
+         ]
+         _bar_chart(ax_p, short_labels, seen_p, unseen_p,
+                    ylabel="Pearson (per-perturbation)", title="Pearson Correlation")
+         _bar_chart(ax_m, short_labels, seen_mse, unseen_mse,
+                    ylabel="MSE (per-perturbation)", title="MSE per Perturbation")
+         fig_cmp.tight_layout()
+         st.pyplot(fig_cmp, use_container_width=True)
+         plt.close(fig_cmp)
+
+     st.caption(
+         "Seen split: stratified within each perturbation condition. "
+         "Unseen split: held-out perturbation genes not seen during training. "
+         "Metrics are per-perturbation (averaged over all genes for each condition)."
+     )
+
+# ── Training History tab ─────────────────────────────────────────────────────
+with history_tab:
+ st.subheader("Training History")
+ if not history:
+     st.info("No `history.json` found in the selected artifact directory.")
+ else:
+     hist_df = pd.DataFrame(history)
+     fig_hist, (ax_loss, ax_pearson) = plt.subplots(1, 2, figsize=(12, 4))
+
+     ax_loss.plot(hist_df["epoch"], hist_df["train_loss"], marker="o", markersize=3,
+                  label="train loss", color="steelblue")
+     if "overall_mse" in hist_df.columns:
+         ax_loss.plot(hist_df["epoch"], hist_df["overall_mse"], marker="s", markersize=3,
+                      label="val MSE", color="coral", linestyle="--")
+     ax_loss.set_xlabel("Epoch")
+     ax_loss.set_ylabel("Loss / MSE")
+     ax_loss.set_title("Train Loss & Val MSE")
+     ax_loss.legend(fontsize=8)
+
+     ax_pearson.plot(hist_df["epoch"], hist_df["pearson_per_perturbation"],
+                     marker="o", markersize=3, color="seagreen")
+     ax_pearson.set_xlabel("Epoch")
+     ax_pearson.set_ylabel("Pearson (per-perturbation)")
+     ax_pearson.set_title("Validation Pearson per Perturbation")
+
+     fig_hist.tight_layout()
+     st.pyplot(fig_hist, use_container_width=True)
+     plt.close(fig_hist)
+
+     st.dataframe(
+         hist_df.style.format("{:.5f}", subset=[c for c in hist_df.columns if c != "epoch"])
+                      .format("{:.0f}", subset=["epoch"]),
+         use_container_width=True,
+         height=340,
+     )
+     if run_summary:
+         val = run_summary.get("validation", {})
+         best_ep = val.get("best_epoch")
+         if best_ep:
+             st.caption(f"Best checkpoint saved at epoch {best_ep}.")

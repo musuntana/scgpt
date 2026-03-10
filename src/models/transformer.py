@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 import torch
 from torch import nn
 
@@ -32,7 +34,15 @@ class TransformerPerturbationModel(nn.Module):
             activation="gelu",
             norm_first=True,
         )
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        # norm_first=True disables nested-tensor optimisation; suppress the
+        # resulting UserWarning which is expected and non-actionable here.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="enable_nested_tensor is True",
+                category=UserWarning,
+            )
+            self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
         self.output_head = nn.Sequential(
             nn.LayerNorm(d_model),
             nn.Linear(d_model, 1),

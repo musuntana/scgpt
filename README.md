@@ -1,6 +1,42 @@
 # PerturbScope-GPT
 
-PerturbScope-GPT is a local-first AI4Bio project for single-cell perturbation response prediction and target prioritization.
+> Local-first Transformer for single-cell perturbation response prediction,
+> trained on Norman2019 (K562 · 10,500 cells · 512 HVGs · 105 single-gene conditions).
+
+**Tech stack:** Python 3.11 · PyTorch · scanpy · scikit-learn · XGBoost · Streamlit · uv
+
+[![CI](https://github.com/musuntana/scgpt/actions/workflows/ci.yml/badge.svg)](https://github.com/musuntana/scgpt/actions/workflows/ci.yml)
+
+## Key Results (Norman2019, real data)
+
+| Model | Unseen Pearson | Unseen MSE | Top-100 DEG Overlap |
+| --- | ---: | ---: | ---: |
+| Transformer | 0.824 | 0.0011 | **0.976** |
+| MLP | 0.837 | 0.00085 | — |
+| XGBoost | 0.840 | 0.00084 | — |
+
+All three models generalize to **unseen perturbations** with Pearson ≥ 0.82.
+The Transformer's top-100 DEG overlap of **0.976** confirms that predicted
+expression shifts identify the correct differentially expressed genes at high recall.
+
+See [Real Norman2019 results](#real-norman2019-results) for per-split tables and figures.
+
+## Quick Start
+
+No dataset download required to try the offline demo:
+
+```bash
+# 1. Set up environment
+./scripts/bootstrap_env.sh && source .venv/bin/activate
+
+# 2. Generate offline synthetic showcase (trains all three models)
+./scripts/run_generate_synthetic_showcase.sh
+
+# 3. Launch Streamlit app
+./scripts/run_app.sh
+```
+
+For the full Norman2019 real-data flow, see [Real Norman2019 workflow](#real-norman2019-workflow) below.
 
 ## Project Goal
 
@@ -10,6 +46,8 @@ Build a job-ready MVP that can:
 - compare against MLP and XGBoost baselines
 - produce DEG-based target rankings
 - expose inference results in a Streamlit demo
+
+See [`docs/architecture.md`](docs/architecture.md) for model and data-flow details.
 
 ## Local-First MVP Scope
 
@@ -26,8 +64,8 @@ This repository now uses `uv` as the default environment and dependency manager.
 - Python version: `3.11`
 - local virtual environment: `.venv`
 - local uv cache: `.uv-cache`
-- dependency source of truth: [`pyproject.toml`](/Users/musun/Desktop/scgpt/pyproject.toml)
-- locked dependency snapshot: [`uv.lock`](/Users/musun/Desktop/scgpt/uv.lock)
+- dependency source of truth: [`pyproject.toml`](pyproject.toml)
+- locked dependency snapshot: [`uv.lock`](uv.lock)
 
 ### Bootstrap
 
@@ -56,6 +94,22 @@ Run tests:
 
 ```bash
 ./scripts/run_tests.sh
+# or
+make test
+```
+
+Run linting and type checking:
+
+```bash
+make lint        # ruff check --fix
+make typecheck   # mypy src/
+```
+
+Install pre-commit hooks (runs ruff automatically before each commit):
+
+```bash
+source .venv/bin/activate
+pre-commit install
 ```
 
 Start the Streamlit app:
@@ -64,10 +118,35 @@ Start the Streamlit app:
 ./scripts/run_app.sh
 ```
 
-The app defaults to the real local demo artifacts:
+The app prefers the real local demo artifacts when they exist:
 - bundle: `data/processed/norman2019_demo_bundle`
 - artifact dir: `artifacts/transformer_seen_norman2019_demo`
 - checkpoint: `<artifact dir>/best_model.pt`
+
+Offline fallback when raw data download is unavailable:
+
+```bash
+./scripts/run_generate_synthetic_demo.sh
+```
+
+This generates a clearly labeled synthetic bundle and demo artifacts:
+- bundle: `data/processed/synthetic_demo_bundle`
+- artifact dir: `artifacts/transformer_seen_synthetic_demo`
+- files: `best_model.pt`, `seen_test_metrics.json`, `unseen_test_metrics.json`, `deg_artifact.csv`, `run_summary.json`
+
+When the real Norman2019 demo artifacts are absent but the synthetic ones exist, the Streamlit app will default to the synthetic paths automatically.
+
+Generate the full offline showcase, including baselines and result figures:
+
+```bash
+./scripts/run_generate_synthetic_showcase.sh
+```
+
+This also produces:
+- `artifacts/mlp_seen_synthetic_demo/`
+- `artifacts/xgboost_seen_synthetic_demo/`
+- `docs/assets/model_comparison_seen_synthetic_demo.png`
+- `docs/assets/transformer_inference_preview_synthetic_demo.png`
 
 Current app behavior:
 - load a saved torch checkpoint
@@ -88,6 +167,18 @@ Download the default `Norman2019` dataset:
 
 ```bash
 ./scripts/download_norman2019.sh
+```
+
+If `curl` keeps resetting on your network, retry with the alternate backend:
+
+```bash
+./scripts/download_norman2019.sh --backend wget
+```
+
+If you downloaded the file manually, verify the checksum before continuing:
+
+```bash
+./scripts/download_norman2019.sh --verify-only
 ```
 
 Inspect AnnData schema and auto-resolved columns:
@@ -148,6 +239,16 @@ Evaluate a saved model:
 
 When `--deg-artifact-path` is provided, the evaluation also computes top-k DEG overlap metrics.
 
+Evaluate all three models in one command:
+
+```bash
+./scripts/run_full_evaluation.sh
+# or
+make eval
+```
+
+This evaluates Transformer and MLP on both seen and unseen test splits. XGBoost metrics are already written at train time.
+
 Write a structured local run summary:
 
 ```bash
@@ -162,38 +263,42 @@ Write a structured local run summary:
 ```
 
 ## Results
+### Included offline showcase assets
 
-This repository already includes one complete local run on the real `Norman2019` demo bundle:
-- bundle: `10500` samples, `256` genes, `105` perturbations
-- primary metric: `pearson_per_perturbation`
-- artifact summaries:
-  - [`artifacts/transformer_seen_norman2019_demo/run_summary.json`](/Users/musun/Desktop/scgpt/artifacts/transformer_seen_norman2019_demo/run_summary.json)
-  - [`artifacts/mlp_seen_norman2019_demo/run_summary.json`](/Users/musun/Desktop/scgpt/artifacts/mlp_seen_norman2019_demo/run_summary.json)
-  - [`artifacts/xgboost_seen_norman2019_demo/xgboost_run_summary.json`](/Users/musun/Desktop/scgpt/artifacts/xgboost_seen_norman2019_demo/xgboost_run_summary.json)
+The repository includes committed synthetic showcase figures that can be regenerated with:
 
-### Model Comparison
+```bash
+./scripts/run_generate_synthetic_showcase.sh
+```
 
-![Norman2019 demo bundle model comparison](docs/assets/model_comparison_seen_norman2019_demo.png)
+Use this offline showcase for:
+- local product and UI demos
+- interview-time walkthroughs of the training/evaluation pipeline
+- repository validation when the real dataset is not available yet
 
-| Model | Best Val Pearson | Seen Test Pearson | Seen Test MSE | Unseen Test Pearson | Unseen Test MSE |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Transformer | 0.6430 | 0.6523 | 0.0518 | 0.8652 | 0.0503 |
-| MLP | 0.6366 | 0.6420 | 0.0520 | 0.8706 | 0.0503 |
-| XGBoost | n/a | 0.6285 | 0.0526 | 0.8213 | 0.0494 |
+Do **not** present these synthetic metrics as real biological results.
+
+### Synthetic model comparison
+
+![Synthetic demo bundle model comparison](docs/assets/model_comparison_seen_synthetic_demo.png)
+
+| Model | Seen Test Pearson | Seen Test MSE | Unseen Test Pearson | Unseen Test MSE |
+| --- | ---: | ---: | ---: | ---: |
+| Transformer | 0.9988 | 0.0040 | 0.9989 | 0.0040 |
+| MLP | 0.9984 | 0.0047 | 0.9995 | 0.0036 |
+| XGBoost | 0.9992 | 0.0046 | 0.9999 | 0.0014 |
 
 Interpretation:
-- Transformer is the strongest model on the main `seen_test` metric.
-- MLP is close to Transformer and serves as a strong low-complexity baseline.
-- XGBoost is competitive on MSE but trails on the main `per-perturbation Pearson` metric.
-- `unseen_test` is easier than `seen_test` on this demo bundle, so this should be reported carefully.
+- the offline showcase verifies that preprocessing artifacts, model training, evaluation, ranking, and visualization all run locally
+- all models perform strongly on the synthetic task because the signal is intentionally structured and low-noise
+- this section is useful for engineering demonstration, not for claiming real perturbation biology performance
 
-### Streamlit Preview
+### Synthetic Streamlit preview
 
-![Transformer inference preview](docs/assets/transformer_inference_preview.png)
+![Synthetic transformer inference preview](docs/assets/transformer_inference_preview_synthetic_demo.png)
 
-The preview above is generated from the same checkpoint and bundle that the Streamlit app loads by default.
-When `artifacts/transformer_seen_norman2019_demo/deg_artifact.csv` exists, the ranking panel uses
-`predicted_delta + DEG significance` instead of prediction-only scoring.
+The preview above is generated from the same synthetic checkpoint and bundle that the app can fall back to automatically.
+
 Launch the interactive app locally with:
 
 ```bash
@@ -206,14 +311,94 @@ Regenerate the README result assets with:
 ./scripts/run_generate_results_assets.sh
 ```
 
+For the offline synthetic showcase:
+
+```bash
+./scripts/run_generate_synthetic_showcase.sh
+```
+
+### Real Norman2019 results
+
+The figures below are generated from the real Norman2019 dataset
+(`scPerturb / Norman2019`, K562, single-gene perturbations, 10,500 cells, 512 HVGs, 105 conditions).
+
+![Norman2019 model comparison](docs/assets/model_comparison_seen_norman2019_demo.png)
+
+| Model | Seen Test Pearson | Seen Test MSE | Unseen Test Pearson | Unseen Test MSE |
+| --- | ---: | ---: | ---: | ---: |
+| Transformer | 0.604 | 0.0071 | 0.824 | 0.0011 |
+| MLP | 0.633 | 0.0066 | 0.837 | 0.00085 |
+| XGBoost | 0.618 | 0.0066 | 0.840 | 0.00084 |
+
+Transformer top-k DEG overlap (seen_test / unseen_test):
+- top-20: 0.816 / 0.930
+- top-50: 0.914 / 0.953
+- top-100: 0.964 / 0.976
+
+![Norman2019 inference preview (JUN)](docs/assets/transformer_inference_preview.png)
+
+All three models achieve **Pearson ≥ 0.82** on unseen perturbations, indicating strong generalization.
+The Transformer top-100 DEG overlap of **0.96–0.98** confirms that predicted expression shifts
+identify the correct differentially expressed genes at high recall.
+
+Regenerate these figures after training with:
+
+```bash
+./scripts/run_generate_results_assets.sh
+```
+
+### Real Norman2019 workflow
+
+Real Norman2019 raw data and generated artifact directories are intentionally not committed by default.
+Once `data/raw/NormanWeissman2019_filtered.h5ad` is present and verified, the supported local flow is:
+
+```bash
+./scripts/run_norman2019_demo.sh
+./scripts/run_train_transformer.sh \
+  --bundle-dir data/processed/norman2019_demo_bundle \
+  --output-dir artifacts/transformer_seen_norman2019_demo
+./scripts/run_train_baselines.sh \
+  --bundle-dir data/processed/norman2019_demo_bundle \
+  --output-dir artifacts/mlp_seen_norman2019_demo \
+  --baseline mlp
+./scripts/run_train_baselines.sh \
+  --bundle-dir data/processed/norman2019_demo_bundle \
+  --output-dir artifacts/xgboost_seen_norman2019_demo \
+  --baseline xgboost
+```
+
+After the real bundle exists, regenerate real-data figures with:
+
+```bash
+./scripts/run_generate_results_assets.sh
+```
+
+## Notebooks
+
+The `notebooks/` directory contains two runnable Jupyter notebooks.
+Launch them with:
+
+```bash
+source .venv/bin/activate
+jupyter lab notebooks/
+```
+
+| Notebook | Description |
+| --- | --- |
+| [`01_data_exploration.ipynb`](notebooks/01_data_exploration.ipynb) | EDA of the Norman2019 bundle: dataset overview, perturbation frequency, control-mean distributions, delta-expression histogram, per-perturbation heatmap |
+| [`02_model_comparison.ipynb`](notebooks/02_model_comparison.ipynb) | Side-by-side metrics for Transformer, MLP, XGBoost; training curves; top-k DEG overlap bar charts; summary table |
+
+Both notebooks load from `data/processed/norman2019_demo_bundle` and `artifacts/`.
+Run `./scripts/run_norman2019_demo.sh` first to generate the required bundle.
+
 ## Repository Documents
 
-- [`PROJECT_PLAN.md`](/Users/musun/Desktop/scgpt/PROJECT_PLAN.md): development plan and architecture decisions
-- [`AGENTS.md`](/Users/musun/Desktop/scgpt/AGENTS.md): implementation constraints and anti-drift guardrails
-- [`pyproject.toml`](/Users/musun/Desktop/scgpt/pyproject.toml): uv project definition and dependency source of truth
-- [`configs/data.yaml`](/Users/musun/Desktop/scgpt/configs/data.yaml): data and preprocessing defaults
-- [`configs/model.yaml`](/Users/musun/Desktop/scgpt/configs/model.yaml): model and memory defaults
-- [`configs/train.yaml`](/Users/musun/Desktop/scgpt/configs/train.yaml): training, evaluation, and ranking defaults
+- [`PROJECT_PLAN.md`](PROJECT_PLAN.md): development plan and architecture decisions
+- [`AGENTS.md`](AGENTS.md): implementation constraints and anti-drift guardrails
+- [`pyproject.toml`](pyproject.toml): uv project definition and dependency source of truth
+- [`configs/data.yaml`](configs/data.yaml): data and preprocessing defaults
+- [`configs/model.yaml`](configs/model.yaml): model and memory defaults
+- [`configs/train.yaml`](configs/train.yaml): training, evaluation, and ranking defaults
 
 ## Recommended Workflow
 

@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
+
+import torch
+from torch.utils.data import DataLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from torch.utils.data import DataLoader
-
+from src.data.pairing import load_processed_bundle
 from src.data.torch_dataset import ProcessedDataset
 from src.models.transformer import TransformerPerturbationModel
 from src.training.trainer import Trainer, TrainerConfig
@@ -79,9 +82,34 @@ def main() -> None:
         dropout=float(transformer_cfg["dropout"]),
     )
 
-    trainer = Trainer(model=model, config=trainer_config, output_dir=Path(args.output_dir))
+    output_dir = Path(args.output_dir)
+    trainer = Trainer(model=model, config=trainer_config, output_dir=output_dir)
     history = trainer.fit(train_loader=train_loader, val_loader=val_loader)
     LOGGER.info("Training complete. History length: %s", len(history))
+
+    # Reload best checkpoint for test evaluation
+    checkpoint_path = output_dir / "best_model.pt"
+    if checkpoint_path.exists():
+        model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
+        model.to(trainer.device)
+
+    # Evaluate on both seen and unseen test splits
+    bundle = load_processed_bundle(args.bundle_dir)
+    for split_name in ("seen_test", "unseen_test"):
+        if split_name not in bundle["splits"]:
+            continue
+        eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
+        eval_loader = DataLoader(
+            eval_dataset,
+            batch_size=trainer_config.batch_size,
+            shuffle=False,
+            num_workers=trainer_config.num_workers,
+        )
+        metrics = trainer.evaluate(eval_loader)
+        metrics_path = output_dir / f"{split_name}_metrics.json"
+        with metrics_path.open("w", encoding="utf-8") as handle:
+            json.dump(metrics, handle, indent=2)
+        LOGGER.info("Saved %s metrics to %s: %s", split_name, metrics_path, metrics)
 
 
 if __name__ == "__main__":

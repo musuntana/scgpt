@@ -72,12 +72,13 @@ def _evaluate_numpy_baseline(
 
 
 def _train_xgboost(args: argparse.Namespace) -> None:
+    train_config_payload = load_yaml(args.train_config)
+    seed_everything(int(train_config_payload["train"]["seed"]))
     bundle = load_processed_bundle(args.bundle_dir)
     splits = bundle["splits"]
     metadata = bundle["metadata"]
 
     train_idx = splits[f"{args.split_prefix}_train"]
-    test_idx = splits[f"{args.split_prefix}_test"]
 
     features = _build_numpy_features(
         bundle["control_expression"],
@@ -86,7 +87,11 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     )
     targets = bundle["target_delta"]
 
-    model = build_xgboost_baseline()
+    model = build_xgboost_baseline(
+        {
+            "random_state": int(train_config_payload["train"]["seed"]),
+        }
+    )
     model.fit(features[train_idx], targets[train_idx])
 
     output_dir = Path(args.output_dir)

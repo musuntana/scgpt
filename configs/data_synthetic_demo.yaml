@@ -1,0 +1,34 @@
+dataset:
+  name: synthetic_demo
+  source: generated offline demo artifact
+  cell_context: synthetic
+  include_single_gene_only: true
+  exclude_multi_gene_perturbations: true
+  control_label: control
+  raw_path: synthetic://generated
+
+schema:
+  preset: synthetic_demo
+
+preprocess:
+  min_genes_per_cell: 0
+  min_cells_per_gene: 0
+  normalize_total_target_sum: 10000
+  log1p: false
+  hvg_top_genes: 64
+  hvg_upper_bound: 64
+  sparse_to_dense_after_hvg: true
+  dense_dtype: float32
+  max_cells_per_perturbation: 48
+
+pairing:
+  target: delta_expression
+  strategy: synthetic_reference_profile
+  fallback_strategy: synthetic_reference_profile
+
+split:
+  seen_protocol: stratified_within_perturbation_condition
+  unseen_protocol: grouped_by_perturbation_gene
+  val_fraction: 0.1
+  test_fraction: 0.2
+  random_seed: 42

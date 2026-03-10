@@ -1,0 +1,33 @@
+train:
+  device: cpu
+  batch_size: 16
+  num_workers: 0
+  epochs: 12
+  learning_rate: 0.003
+  weight_decay: 0.0001
+  l1_lambda: 0.0
+  grad_clip_norm: 1.0
+  early_stopping_patience: 4
+  seed: 42
+  checkpoint_metric: pearson_per_perturbation
+
+evaluation:
+  primary_granularity: per_perturbation
+  secondary_granularity:
+    - per_gene
+  compute_seen_split: true
+  compute_unseen_split: true
+  topk_values:
+    - 10
+    - 20
+
+deg:
+  method: synthetic_effect_size
+  adjusted_pvalue_threshold: 0.05
+  abs_logfoldchange_threshold: 0.25
+
+ranking:
+  use_attention_score: false
+  abs_predicted_delta_weight: 0.5
+  deg_significance_weight: 0.5
+  deg_significance_transform: neg_log10_adjusted_pvalue

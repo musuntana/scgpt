@@ -19,3 +19,14 @@ data/processed/*
 artifacts/
 checkpoints/
 logs/
+
+# build artifacts
+*.egg-info/
+dist/
+build/
+
+# tool caches
+.ruff_cache/
+
+# jupyter
+notebooks/.ipynb_checkpoints/

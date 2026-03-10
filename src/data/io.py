@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,21 @@ def validate_h5ad_file(path: str | Path) -> None:
             f"H5AD file appears incomplete or unreadable: {file_path}. "
             "Resume the download and try again."
         ) from exc
+
+
+def compute_file_md5(path: str | Path) -> str:
+    """Compute the MD5 checksum for a local file."""
+    file_path = Path(path)
+    md5 = hashlib.md5()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            md5.update(chunk)
+    return md5.hexdigest()
+
+
+def file_matches_md5(path: str | Path, expected_md5: str) -> bool:
+    """Check whether a local file matches an expected MD5 checksum."""
+    return compute_file_md5(path).lower() == expected_md5.strip().lower()
 
 
 def write_json(path: str | Path, payload: dict[str, Any]) -> None:

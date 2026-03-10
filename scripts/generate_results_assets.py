@@ -72,6 +72,21 @@ def parse_args() -> argparse.Namespace:
         default="docs/assets",
         help="Directory to write generated image assets.",
     )
+    parser.add_argument(
+        "--comparison-title",
+        default="Norman2019 Demo Bundle: Model Comparison",
+        help="Title for the model comparison figure.",
+    )
+    parser.add_argument(
+        "--comparison-output-name",
+        default="model_comparison_seen_norman2019_demo.png",
+        help="Filename for the model comparison figure.",
+    )
+    parser.add_argument(
+        "--preview-output-name",
+        default="transformer_inference_preview.png",
+        help="Filename for the transformer inference preview figure.",
+    )
     return parser.parse_args()
 
 
@@ -83,6 +98,7 @@ def generate_model_comparison_figure(
     transformer_summary: dict,
     mlp_summary: dict,
     xgboost_summary: dict,
+    title: str,
     output_path: Path,
 ) -> None:
     models = ["Transformer", "MLP", "XGBoost"]
@@ -105,7 +121,7 @@ def generate_model_comparison_figure(
     axis.bar(x + width / 2, unseen_pearson, width, label="unseen_test")
     axis.set_ylim(0.0, 1.0)
     axis.set_ylabel("Per-perturbation Pearson")
-    axis.set_title("Norman2019 Demo Bundle: Model Comparison")
+    axis.set_title(title)
     axis.set_xticks(x)
     axis.set_xticklabels(models)
     axis.legend()
@@ -233,7 +249,8 @@ def main() -> None:
         transformer_summary=transformer_summary,
         mlp_summary=mlp_summary,
         xgboost_summary=xgboost_summary,
-        output_path=output_dir / "model_comparison_seen_norman2019_demo.png",
+        title=args.comparison_title,
+        output_path=output_dir / args.comparison_output_name,
     )
     used_perturbation = generate_inference_preview_figure(
         bundle_dir=args.bundle_dir,
@@ -242,7 +259,7 @@ def main() -> None:
         train_config_path=args.train_config,
         deg_artifact_path=Path(args.transformer_artifact_dir) / DEG_ARTIFACT_FILENAME,
         perturbation_name=args.perturbation_name,
-        output_path=output_dir / "transformer_inference_preview.png",
+        output_path=output_dir / args.preview_output_name,
     )
 
     print(f"Generated README assets in {output_dir}")

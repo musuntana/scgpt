@@ -32,16 +32,14 @@ def test_compute_deg_artifact_and_reload(tmp_path):
     )
 
     assert not deg_df.empty
-    assert set(
-        [
-            "perturbation",
-            "rank",
-            "gene",
-            "logfoldchange",
-            "adjusted_p_value",
-            "deg_significance",
-        ]
-    ).issubset(deg_df.columns)
+    assert {
+        "perturbation",
+        "rank",
+        "gene",
+        "logfoldchange",
+        "adjusted_p_value",
+        "deg_significance",
+    }.issubset(deg_df.columns)
 
     csv_path, metadata_path = save_deg_artifact(
         deg_df=deg_df,

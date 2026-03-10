@@ -40,7 +40,10 @@ def summarize_history(
 
 def _load_bundle_overview(bundle_dir: str | Path) -> dict[str, Any]:
     bundle_path = Path(bundle_dir)
-    metadata = load_json(bundle_path / "metadata.json")
+    raw_metadata = load_json(bundle_path / "metadata.json")
+    if not isinstance(raw_metadata, dict):
+        raise ValueError(f"Expected metadata.json to be a dict, got {type(raw_metadata)}")
+    metadata: dict[str, Any] = raw_metadata
     arrays = np.load(bundle_path / "arrays.npz", allow_pickle=False)
     splits = np.load(bundle_path / "splits.npz", allow_pickle=False)
 

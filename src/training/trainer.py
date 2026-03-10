@@ -41,7 +41,7 @@ class TrainerConfig:
     checkpoint_metric: str = "pearson_per_perturbation"
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "TrainerConfig":
+    def from_dict(cls, payload: dict[str, Any]) -> TrainerConfig:
         train_cfg = payload.get("train", payload)
         return cls(
             device=str(train_cfg.get("device", "auto")),
@@ -86,7 +86,7 @@ class Trainer:
         patience = 0
 
         for epoch in range(1, self.config.epochs + 1):
-            train_loss = self._train_one_epoch(train_loader)
+            train_loss = self._train_one_epoch(train_loader, epoch=epoch)
             val_metrics = self.evaluate(val_loader)
             epoch_record = {"epoch": float(epoch), "train_loss": train_loss, **val_metrics}
             history.append(epoch_record)
@@ -112,14 +112,17 @@ class Trainer:
 
         return history
 
-    def _train_one_epoch(self, loader: DataLoader) -> float:
-        if len(loader.dataset) == 0:
+    def _train_one_epoch(self, loader: DataLoader, epoch: int = 0) -> float:
+        if len(loader.dataset) == 0:  # type: ignore[arg-type]
             return 0.0
 
         self.model.train()
         total_loss = 0.0
         total_examples = 0
-        for batch in loader:
+        n_batches = len(loader)
+        log_every = max(1, n_batches // 5)
+
+        for batch_idx, batch in enumerate(loader):
             control_expression = batch["control_expression"].to(self.device)
             perturbation_index = batch["perturbation_index"].to(self.device)
             target_delta = batch["target_delta"].to(self.device)
@@ -142,11 +145,21 @@ class Trainer:
             total_loss += float(loss.item()) * batch_size
             total_examples += batch_size
 
+            if (batch_idx + 1) % log_every == 0 or batch_idx == n_batches - 1:
+                running_loss = total_loss / max(total_examples, 1)
+                LOGGER.info(
+                    "Epoch %s | batch %s/%s | running_loss=%.4f",
+                    epoch,
+                    batch_idx + 1,
+                    n_batches,
+                    running_loss,
+                )
+
         return total_loss / max(total_examples, 1)
 
     @torch.no_grad()
     def evaluate(self, loader: DataLoader) -> dict[str, float]:
-        if len(loader.dataset) == 0:
+        if len(loader.dataset) == 0:  # type: ignore[arg-type]
             return {
                 "overall_mse": 0.0,
                 "mse_per_perturbation": 0.0,

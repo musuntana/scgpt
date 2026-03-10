@@ -56,6 +56,22 @@ Run tests:
 
 ```bash
 ./scripts/run_tests.sh
+# or
+make test
+```
+
+Run linting and type checking:
+
+```bash
+make lint        # ruff check --fix
+make typecheck   # mypy src/
+```
+
+Install pre-commit hooks (runs ruff automatically before each commit):
+
+```bash
+source .venv/bin/activate
+pre-commit install
 ```
 
 Start the Streamlit app:
@@ -184,6 +200,16 @@ Evaluate a saved model:
 ```
 
 When `--deg-artifact-path` is provided, the evaluation also computes top-k DEG overlap metrics.
+
+Evaluate all three models in one command:
+
+```bash
+./scripts/run_full_evaluation.sh
+# or
+make eval
+```
+
+This evaluates Transformer and MLP on both seen and unseen test splits. XGBoost metrics are already written at train time.
 
 Write a structured local run summary:
 

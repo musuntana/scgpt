@@ -113,7 +113,7 @@ class Trainer:
         return history
 
     def _train_one_epoch(self, loader: DataLoader, epoch: int = 0) -> float:
-        if len(loader.dataset) == 0:
+        if len(loader.dataset) == 0:  # type: ignore[arg-type]
             return 0.0
 
         self.model.train()
@@ -159,7 +159,7 @@ class Trainer:
 
     @torch.no_grad()
     def evaluate(self, loader: DataLoader) -> dict[str, float]:
-        if len(loader.dataset) == 0:
+        if len(loader.dataset) == 0:  # type: ignore[arg-type]
             return {
                 "overall_mse": 0.0,
                 "mse_per_perturbation": 0.0,

@@ -22,9 +22,12 @@ dependencies = [
 dev = [
   "ipykernel>=6.29",
   "jupyter>=1.0",
+  "mypy>=1.10",
   "nbconvert>=7.16",
+  "pre-commit>=3.7",
   "pytest>=8.0",
   "ruff>=0.4",
+  "types-PyYAML>=6.0",
 ]
 
 [tool.uv]
@@ -41,6 +44,16 @@ ignore = [
   "B008",   # do not perform function call in default arguments
   "UP007",  # use X | Y for type annotations (Python 3.9+)
 ]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_return_any = false
+# Scientific libraries (numpy, torch, anndata, scanpy) lack complete stubs;
+# strict checks would produce thousands of false positives.
+strict = false
+exclude = ["tests/", "scripts/", "notebooks/"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["F401", "F811"]

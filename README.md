@@ -121,6 +121,28 @@ The doctor command checks:
 - real Norman2019 bundle and result artifacts
 - model-comparison summaries for MLP and XGBoost
 
+Export an interview-friendly project snapshot:
+
+```bash
+./scripts/run_snapshot.sh
+# or
+make snapshot
+```
+
+Useful variants:
+
+```bash
+./scripts/run_snapshot.sh --json
+./scripts/run_snapshot.sh --output-path artifacts/project_snapshot.json
+```
+
+The snapshot command summarizes:
+- project readiness modes from `doctor`
+- headline real-data results across Transformer / MLP / XGBoost
+- Transformer DEG-overlap highlights
+- key demo asset paths
+- recommended commands for a live walkthrough
+
 Install pre-commit hooks (runs ruff automatically before each commit):
 
 ```bash

@@ -307,9 +307,10 @@ def format_health_report(summary: dict[str, Any]) -> str:
             "",
             "Recommended order:",
             "  1. make doctor",
-            "  2. make test && make lint && make typecheck",
-            "  3. ./scripts/run_generate_synthetic_showcase.sh",
-            "  4. ./scripts/run_app.sh",
+            "  2. make snapshot",
+            "  3. make test && make lint && make typecheck",
+            "  4. ./scripts/run_generate_synthetic_showcase.sh",
+            "  5. ./scripts/run_app.sh",
         ]
     )
     return "\n".join(lines)

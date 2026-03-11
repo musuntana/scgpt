@@ -18,8 +18,14 @@
 All three models generalize to **unseen perturbations** with Pearson ≥ 0.82.
 The Transformer's top-100 DEG overlap of **0.976** confirms that predicted
 expression shifts identify the correct differentially expressed genes at high recall.
+Across 3 real Transformer seeds (`42`, `7`, `21`), unseen Pearson is
+**0.830 +/- 0.007** and unseen top-100 DEG overlap is **0.985 +/- 0.007**.
 
 See [Real Norman2019 results](#real-norman2019-results) for per-split tables and figures.
+
+> Provenance guardrail: unless a section is explicitly labeled **synthetic**, metrics in this
+> README refer to the real Norman2019 run. The synthetic showcase exists only for offline
+> pipeline/UI demos and must not be cited as biological performance.
 
 ## Quick Start
 
@@ -35,6 +41,9 @@ No dataset download required to try the offline demo:
 # 3. Launch Streamlit app
 ./scripts/run_app.sh
 ```
+
+This quick start uses the **synthetic offline showcase**. It is intended for product/demo validation,
+not for reporting real perturbation biology results.
 
 For the full Norman2019 real-data flow, see [Real Norman2019 workflow](#real-norman2019-workflow) below.
 
@@ -140,6 +149,7 @@ The snapshot command summarizes:
 - project readiness modes from `doctor`
 - headline real-data results across Transformer / MLP / XGBoost
 - Transformer DEG-overlap highlights
+- Transformer multi-seed stability when `artifacts/multi_seed_report.json` is available
 - key demo asset paths
 - recommended commands for a live walkthrough
 
@@ -183,6 +193,7 @@ Useful variants:
 The pitch command includes:
 - 30-second project intro
 - 2-minute technical walkthrough
+- real Transformer multi-seed stability when available
 - live demo script
 - honest limitations
 - next-step talking points
@@ -218,6 +229,8 @@ This generates a clearly labeled synthetic bundle and demo artifacts:
 - files: `best_model.pt`, `seen_test_metrics.json`, `unseen_test_metrics.json`, `deg_artifact.csv`, `run_summary.json`
 
 When the real Norman2019 demo artifacts are absent but the synthetic ones exist, the Streamlit app will default to the synthetic paths automatically.
+The app now surfaces whether the loaded artifacts are **real** or **synthetic**, and the model-comparison
+tab filters rows to the active provenance mode to avoid mixing the two.
 
 Generate the full offline showcase, including baselines and result figures:
 
@@ -236,6 +249,8 @@ Current app behavior:
 - select a perturbation gene from the processed bundle
 - run aggregated inference for that perturbation
 - if `deg_artifact.csv` exists in the artifact directory, combine predicted delta with real DEG significance
+- if `multi_seed_report.json` exists, show Transformer multi-seed stability for the active real/synthetic mode
+- if `*_error_summary.json` and `*_per_perturbation.csv` exist, show split-level failure highlights and selected-perturbation diagnostics
 - show predicted vs observed delta, top predicted genes, true DEG rows, target ranking, and top-k DEG overlap
 
 Preprocess a dataset bundle:
@@ -321,6 +336,23 @@ Evaluate a saved model:
 ```
 
 When `--deg-artifact-path` is provided, the evaluation also computes top-k DEG overlap metrics.
+It can also emit perturbation-level error analysis artifacts:
+
+```bash
+./scripts/run_evaluate.sh \
+  --bundle-dir data/processed/demo_bundle \
+  --checkpoint-path artifacts/transformer_seen/best_model.pt \
+  --model-type transformer \
+  --output-path artifacts/transformer_seen/test_metrics.json \
+  --deg-artifact-path artifacts/transformer_seen/deg_artifact.csv \
+  --per-perturbation-output-path artifacts/transformer_seen/test_per_perturbation.csv \
+  --error-summary-output-path artifacts/transformer_seen/test_error_summary.json
+```
+
+The perturbation-level CSV is useful for answering:
+- which perturbations perform worst
+- whether errors come from low-signal conditions, magnitude underestimation, or high residual mismatch
+- which genes dominate the residual for a failed condition
 
 Evaluate all three models in one command:
 
@@ -331,6 +363,9 @@ make eval
 ```
 
 This evaluates Transformer and MLP on both seen and unseen test splits. XGBoost metrics are already written at train time.
+For Transformer and MLP it also writes:
+- split-specific perturbation-level CSV files
+- split-specific `*_error_summary.json` files listing the worst conditions
 
 Write a structured local run summary:
 
@@ -344,6 +379,42 @@ Write a structured local run summary:
   --seen-metrics-path artifacts/transformer_seen/seen_test_metrics.json \
   --unseen-metrics-path artifacts/transformer_seen/unseen_test_metrics.json
 ```
+
+Multi-seed reporting:
+
+```bash
+# create repeated runs with distinct output dirs
+./scripts/run_train_transformer.sh \
+  --bundle-dir data/processed/norman2019_demo_bundle \
+  --output-dir artifacts/transformer_seen_norman2019_seed7 \
+  --seed 7
+
+# record the actual seed in run_summary.json
+./scripts/run_summarize_run.sh \
+  --bundle-dir data/processed/norman2019_demo_bundle \
+  --output-dir artifacts/transformer_seen_norman2019_seed7 \
+  --checkpoint-path artifacts/transformer_seen_norman2019_seed7/best_model.pt \
+  --model-type transformer \
+  --split-prefix seen \
+  --seen-metrics-path artifacts/transformer_seen_norman2019_seed7/seen_test_metrics.json \
+  --unseen-metrics-path artifacts/transformer_seen_norman2019_seed7/unseen_test_metrics.json \
+  --seed 7
+
+# aggregate mean/std across repeated runs
+./scripts/run_multi_seed_report.sh --artifact-root artifacts
+./scripts/run_multi_seed_report.sh --artifact-root artifacts --json \
+  --output-path artifacts/multi_seed_report.json
+```
+
+The current real Transformer aggregate groups
+`transformer_seen_norman2019_demo` with `transformer_seen_norman2019_seed7`
+and `transformer_seen_norman2019_seed21`, yielding:
+- seen Pearson: `0.601 +/- 0.007`
+- unseen Pearson: `0.830 +/- 0.007`
+- seen top-100 DEG overlap: `0.964 +/- 0.002`
+- unseen top-100 DEG overlap: `0.985 +/- 0.007`
+
+Synthetic and real artifact groups are kept separate in `artifacts/multi_seed_report.json`.
 
 ## Results
 ### Included offline showcase assets
@@ -423,6 +494,36 @@ Transformer top-k DEG overlap (seen_test / unseen_test):
 All three models achieve **Pearson ≥ 0.82** on unseen perturbations, indicating strong generalization.
 The Transformer top-100 DEG overlap of **0.96–0.98** confirms that predicted expression shifts
 identify the correct differentially expressed genes at high recall.
+
+Transformer multi-seed stability on the real Norman2019 bundle
+(`transformer_seen_norman2019_demo`, `transformer_seen_norman2019_seed7`,
+`transformer_seen_norman2019_seed21`):
+- seen Pearson: `0.601 +/- 0.007`
+- unseen Pearson: `0.830 +/- 0.007`
+- seen top-100 DEG overlap: `0.964 +/- 0.002`
+- unseen top-100 DEG overlap: `0.985 +/- 0.007`
+
+This 3-run spread is modest, so the Transformer story is not coming from one cherry-picked seed.
+The aggregate report is written to `artifacts/multi_seed_report.json`.
+
+#### Error-analysis highlights
+
+The split-specific `*_error_summary.json` artifacts show that the current real-data failure cases are
+dominated by **low-signal perturbations**, not by widespread directional collapse:
+
+- Transformer unseen worst Pearson: `MAP2K6` (`pearson=0.565`, `mse=0.0010`)
+- Transformer unseen worst MSE: `FOXO4` (`pearson=0.873`, `mse=0.00164`)
+- MLP unseen worst Pearson: `KMT2A` (`pearson=0.676`, `mse=0.00085`)
+- MLP unseen worst MSE: `SAMD1` (`pearson=0.922`, `mse=0.00129`)
+
+On the seen split, the more pathological cases are easier to separate:
+
+- low-support conditions such as `ZC3HAV1` and `TBX2`
+- magnitude overestimation on `CEBPE`
+- high-residual mismatch on `SPI1`
+
+This makes the next debugging step clearer: prioritize condition-level signal strength and sample support
+before assuming the core perturbation representation is fundamentally broken.
 
 Regenerate these figures after training with:
 

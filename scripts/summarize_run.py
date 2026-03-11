@@ -60,6 +60,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional JSON path for unseen_test metrics.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional override for the recorded training seed in run_summary.json.",
+    )
     return parser.parse_args()
 
 
@@ -81,6 +87,7 @@ def main() -> None:
         history_path=history_path,
         seen_metrics_path=args.seen_metrics_path,
         unseen_metrics_path=args.unseen_metrics_path,
+        seed=args.seed,
     )
     destination = write_run_summary(summary, output_path)
     LOGGER.info("Wrote run summary to %s", destination)

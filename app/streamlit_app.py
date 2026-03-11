@@ -14,6 +14,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.io import read_json
 from src.data.pairing import load_processed_bundle
 from src.evaluation.deg import DEG_ARTIFACT_FILENAME, DEG_METADATA_FILENAME, load_deg_artifact
+from src.evaluation.error_analysis import (
+    build_failure_mode_count_frame,
+    build_worst_conditions_frame,
+    select_perturbation_diagnostics,
+)
 from src.evaluation.inference import (
     build_gene_comparison_frame,
     build_perturbation_batch,
@@ -29,6 +34,7 @@ from src.utils.comparison import (
     shorten_model_label,
 )
 from src.utils.config import load_yaml
+from src.utils.multiseed import load_multiseed_report, select_multiseed_group
 
 REAL_BUNDLE_DIR = "data/processed/norman2019_demo_bundle"
 REAL_ARTIFACT_DIR = "artifacts/transformer_seen_norman2019_demo"
@@ -61,6 +67,30 @@ def resolve_default_demo_paths() -> tuple[str, str, str, str]:
 ) = resolve_default_demo_paths()
 
 
+def infer_demo_mode(
+    bundle_dir: str | Path,
+    artifact_dir: str | Path,
+    run_summary: dict | None = None,
+) -> str:
+    dataset = (run_summary or {}).get("dataset", {})
+    candidates = [
+        str(bundle_dir).lower(),
+        str(artifact_dir).lower(),
+        str(dataset.get("name", "")).lower(),
+        str(dataset.get("source", "")).lower(),
+        str(dataset.get("raw_path", "")).lower(),
+    ]
+    if any("synthetic" in candidate for candidate in candidates):
+        return "synthetic"
+    return "real"
+
+
+def filter_rows_for_demo_mode(rows: list[dict], demo_mode: str) -> list[dict]:
+    suffix = "_synthetic_demo" if demo_mode == "synthetic" else "_norman2019_demo"
+    filtered = [row for row in rows if str(row["model"]).endswith(suffix)]
+    return filtered or rows
+
+
 @st.cache_data(show_spinner=False)
 def load_bundle_cached(bundle_dir: str) -> dict:
     return load_processed_bundle(bundle_dir)
@@ -84,6 +114,17 @@ def load_optional_list(path: str) -> list:
     with open(file_path) as fh:
         data = json.load(fh)
     return data if isinstance(data, list) else []
+
+@st.cache_data(show_spinner=False)
+def load_optional_multiseed_report(path: str) -> list[dict]:
+    return load_multiseed_report(path)
+
+@st.cache_data(show_spinner=False)
+def load_optional_csv(path: str) -> pd.DataFrame:
+    file_path = Path(path)
+    if not file_path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(file_path)
 
 
 
@@ -135,9 +176,129 @@ def top_gene_frame(comparison_df: pd.DataFrame, column: str, ascending: bool, to
     )
 
 
+def format_mean_std(mean: float | None, std: float | None) -> str:
+    if mean is None:
+        return "n/a"
+    if std is None:
+        return f"{float(mean):.4f}"
+    return f"{float(mean):.4f} ± {float(std):.4f}"
+
+
+def display_error_summary(split_label: str, error_summary: dict, *, top_n: int = 4) -> None:
+    st.write(split_label)
+    if not error_summary:
+        st.caption(f"No saved {split_label.lower()} error summary found.")
+        return
+
+    failure_mode_df = build_failure_mode_count_frame(error_summary)
+    worst_pearson_df = build_worst_conditions_frame(
+        error_summary,
+        rank_by="worst_by_pearson",
+        top_n=top_n,
+    )
+    worst_mse_df = build_worst_conditions_frame(
+        error_summary,
+        rank_by="worst_by_mse",
+        top_n=top_n,
+    )
+
+    st.caption(
+        f"{int(error_summary.get('num_perturbations', 0))} perturbations in saved "
+        f"{split_label.lower()} diagnostics."
+    )
+    if not failure_mode_df.empty:
+        st.write("Failure mode counts")
+        st.dataframe(failure_mode_df, use_container_width=True, height=180)
+
+    if not worst_pearson_df.empty:
+        pearson_columns = [
+            column
+            for column in [
+                "perturbation",
+                "pearson",
+                "sample_count",
+                "failure_mode",
+                "top_residual_genes",
+            ]
+            if column in worst_pearson_df.columns
+        ]
+        st.write("Worst Pearson")
+        st.dataframe(
+            worst_pearson_df.loc[:, pearson_columns].style.format(
+                {"pearson": "{:.4f}"},
+                na_rep="—",
+            ),
+            use_container_width=True,
+            height=210,
+        )
+
+    if not worst_mse_df.empty:
+        mse_columns = [
+            column
+            for column in [
+                "perturbation",
+                "mse",
+                "sample_count",
+                "failure_mode",
+                "top_residual_genes",
+            ]
+            if column in worst_mse_df.columns
+        ]
+        st.write("Worst MSE")
+        st.dataframe(
+            worst_mse_df.loc[:, mse_columns].style.format(
+                {"mse": "{:.4f}"},
+                na_rep="—",
+            ),
+            use_container_width=True,
+            height=210,
+        )
+
+
+def display_selected_split_diagnostics(
+    split_label: str,
+    perturbation_name: str,
+    diagnostics: dict,
+) -> None:
+    st.write(split_label)
+    if not diagnostics:
+        st.caption(
+            f"`{perturbation_name}` is not present in the saved {split_label.lower()} artifact."
+        )
+        return
+
+    summary_df = pd.DataFrame(
+        [
+            {
+                "Samples": diagnostics.get("sample_count"),
+                "Pearson": diagnostics.get("pearson"),
+                "MSE": diagnostics.get("mse"),
+                "Failure Mode": diagnostics.get("failure_mode", "n/a"),
+                "Error/Signal": diagnostics.get("error_to_signal_ratio"),
+            }
+        ]
+    )
+    st.dataframe(
+        summary_df.style.format(
+            {
+                "Samples": "{:.0f}",
+                "Pearson": "{:.4f}",
+                "MSE": "{:.4f}",
+                "Error/Signal": "{:.4f}",
+            },
+            na_rep="—",
+        ),
+        use_container_width=True,
+        height=80,
+    )
+    top_residual_genes = diagnostics.get("top_residual_genes")
+    if top_residual_genes:
+        st.caption(f"Top residual genes: {top_residual_genes}")
+
+
 st.set_page_config(page_title="PerturbScope-GPT", layout="wide")
 st.title("PerturbScope-GPT")
-st.caption("Local-first single-cell perturbation response demo · Norman2019 K562")
+st.caption("Local-first single-cell perturbation response demo")
 
 bundle_dir = Path(
     st.sidebar.text_input(
@@ -189,12 +350,33 @@ deg_metadata = load_optional_json(str(deg_metadata_path))
 deg_artifact = load_optional_deg_artifact(str(deg_artifact_path))
 train_config = load_yaml(train_config_path)
 history = load_optional_list(str(artifact_dir / "history.json"))
+demo_mode = infer_demo_mode(bundle_dir, artifact_dir, run_summary)
+multiseed_report = load_optional_multiseed_report(str(artifact_dir.parent / "multi_seed_report.json"))
+multiseed_dataset_name = "synthetic_demo" if demo_mode == "synthetic" else "scperturb_norman2019"
+transformer_multiseed = select_multiseed_group(
+    multiseed_report,
+    dataset_name=multiseed_dataset_name,
+    train_protocol="seen",
+    model_type="transformer",
+)
+seen_error_summary = load_optional_json(str(artifact_dir / "seen_test_error_summary.json"))
+unseen_error_summary = load_optional_json(str(artifact_dir / "unseen_test_error_summary.json"))
+seen_error_table = load_optional_csv(str(artifact_dir / "seen_test_per_perturbation.csv"))
+unseen_error_table = load_optional_csv(str(artifact_dir / "unseen_test_per_perturbation.csv"))
 model = load_model_cached(
     bundle_dir=str(bundle_dir),
     checkpoint_path=str(checkpoint_path),
     model_config_path=str(model_config_path),
     model_type=model_type,
 )
+
+if demo_mode == "synthetic":
+    st.warning(
+        "Currently showing the offline synthetic showcase. Use it to validate the pipeline and UI, "
+        "not to make biological claims about real perturbation performance."
+    )
+else:
+    st.info("Currently showing real Norman2019 demo artifacts.")
 
 metadata = bundle["metadata"]
 selected_perturbation = st.sidebar.selectbox(
@@ -297,6 +479,29 @@ with inference_tab:
      "for the selected perturbation. Observed delta is the mean target delta across bundle samples "
      "for this perturbation."
  )
+ selected_seen_diagnostics = select_perturbation_diagnostics(
+     seen_error_table,
+     perturbation_name=selected_perturbation,
+ )
+ selected_unseen_diagnostics = select_perturbation_diagnostics(
+     unseen_error_table,
+     perturbation_name=selected_perturbation,
+ )
+ if selected_seen_diagnostics or selected_unseen_diagnostics:
+     st.subheader("Stored Split Diagnostics")
+     diag_left, diag_right = st.columns(2)
+     with diag_left:
+         display_selected_split_diagnostics(
+             "Seen split",
+             selected_perturbation,
+             selected_seen_diagnostics,
+         )
+     with diag_right:
+         display_selected_split_diagnostics(
+             "Unseen split",
+             selected_perturbation,
+             selected_unseen_diagnostics,
+         )
  if selected_deg_df.empty:
      st.warning(
          "No DEG rows were found for this perturbation. Ranking is currently prediction-only. "
@@ -385,8 +590,62 @@ with inference_tab:
 # ── Model Comparison tab ─────────────────────────────────────────────────────
 with comparison_tab:
  st.subheader("Model Comparison — test-set metrics")
+ if transformer_multiseed:
+     st.markdown("#### Transformer Multi-Seed Stability")
+     ms_col1, ms_col2, ms_col3, ms_col4 = st.columns(4)
+     ms_col1.metric("Runs", int(transformer_multiseed.get("num_runs", 0)))
+     ms_col2.metric(
+         "Seen Pearson",
+         format_mean_std(
+             transformer_multiseed.get("seen_pearson_mean"),
+             transformer_multiseed.get("seen_pearson_std"),
+         ),
+     )
+     ms_col3.metric(
+         "Unseen Pearson",
+         format_mean_std(
+             transformer_multiseed.get("unseen_pearson_mean"),
+             transformer_multiseed.get("unseen_pearson_std"),
+         ),
+     )
+     ms_col4.metric(
+         "Unseen Top-100 DEG",
+         format_mean_std(
+             transformer_multiseed.get("unseen_top100_deg_mean"),
+             transformer_multiseed.get("unseen_top100_deg_std"),
+         ),
+     )
+     stability_prefix = (
+         "Synthetic showcase stability only. "
+         if demo_mode == "synthetic"
+         else "Real Norman2019 Transformer stability across repeated seeds. "
+     )
+     artifact_labels = transformer_multiseed.get("artifact_labels") or []
+     seeds = transformer_multiseed.get("seeds") or []
+     stability_details: list[str] = []
+     if artifact_labels:
+         stability_details.append("Artifacts: " + ", ".join(str(label) for label in artifact_labels))
+     if seeds:
+         stability_details.append("Seeds: " + ", ".join(str(seed) for seed in seeds))
+     st.caption(stability_prefix + (" ".join(stability_details) if stability_details else ""))
+ if seen_error_summary or unseen_error_summary:
+     st.markdown("#### Error-Analysis Highlights")
+     error_caption_prefix = (
+         "Synthetic showcase diagnostics only. "
+         if demo_mode == "synthetic"
+         else "Real Norman2019 diagnostics from saved split-level artifacts. "
+     )
+     st.caption(
+         error_caption_prefix
+         + "Failure modes are heuristic and intended for qualitative debugging only."
+     )
+     error_left, error_right = st.columns(2)
+     with error_left:
+         display_error_summary("Seen split", seen_error_summary)
+     with error_right:
+         display_error_summary("Unseen split", unseen_error_summary)
  artifact_root = str(artifact_dir.parent)
- rows = scan_artifact_comparison_rows(artifact_root)
+ rows = filter_rows_for_demo_mode(scan_artifact_comparison_rows(artifact_root), demo_mode)
  if not rows:
      st.warning(f"No run_summary.json files found under `{artifact_root}`.")
  else:
@@ -460,10 +719,16 @@ with comparison_tab:
          st.pyplot(fig_cmp, use_container_width=True)
          plt.close(fig_cmp)
 
+     caption_prefix = (
+         "Synthetic showcase only. "
+         if demo_mode == "synthetic"
+         else "Real Norman2019 results only. "
+     )
      st.caption(
-         "Seen split: stratified within each perturbation condition. "
-         "Unseen split: held-out perturbation genes not seen during training. "
-         "Metrics are per-perturbation (averaged over all genes for each condition)."
+         caption_prefix
+         + "Seen split: stratified within each perturbation condition. "
+         + "Unseen split: held-out perturbation genes not seen during training. "
+         + "Metrics are per-perturbation (averaged over all genes for each condition)."
      )
 
 # ── Training History tab ─────────────────────────────────────────────────────

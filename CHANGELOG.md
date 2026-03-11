@@ -4,6 +4,18 @@ All notable changes to PerturbScope-GPT are documented here.
 
 ---
 
+## [Reproducibility & analysis] — 2026-03
+
+**Result robustness and failure-analysis pass**
+
+- Added optional `--seed` overrides to training and run-summary scripts so repeated experiments can be recorded without editing YAML
+- Added `scripts/multi_seed_report.py` and `scripts/run_multi_seed_report.sh` to aggregate repeated runs into mean/std summaries
+- Extended `scripts/evaluate_model.py` with perturbation-level CSV exports and `*_error_summary.json` outputs for worst-case conditions
+- Added heuristic perturbation failure modes (low signal, magnitude mismatch, high residual) to support qualitative debugging
+- Updated `scripts/run_full_evaluation.sh` to emit per-split perturbation-level error artifacts automatically
+- Tightened the real-vs-synthetic boundary in the Streamlit app and README so offline showcase artifacts are not confused with real biological results
+
+---
 ## [Polish] — 2026-03
 
 **Engineering & demo quality pass**

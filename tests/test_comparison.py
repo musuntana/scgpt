@@ -9,6 +9,7 @@ import pytest
 
 from src.utils.comparison import (
     extract_summary_row,
+    normalize_seeded_label,
     plot_grouped_metric_bars,
     scan_artifact_comparison_rows,
     shorten_model_label,
@@ -56,6 +57,8 @@ def test_extract_summary_row_torch_layout():
     row = extract_summary_row(_TORCH_SUMMARY, "transformer_seen_norman2019_demo")
     assert row is not None
     assert row["model"] == "transformer_seen_norman2019_demo"
+    assert row["base_model_label"] == "transformer_seen_norman2019"
+    assert row["model_type"] == "transformer"
     assert abs(row["seen_pearson"] - 0.604) < 1e-6
     assert abs(row["unseen_pearson"] - 0.824) < 1e-6
     assert abs(row["seen_top20_deg"] - 0.816) < 1e-6
@@ -66,6 +69,7 @@ def test_extract_summary_row_xgboost_layout():
     row = extract_summary_row(_XGBOOST_SUMMARY, "xgboost_seen_norman2019_demo")
     assert row is not None
     assert row["model"] == "xgboost_seen_norman2019_demo"
+    assert row["model_type"] == "xgboost"
     assert abs(row["seen_pearson"] - 0.618) < 1e-6
     assert row["seen_top20_deg"] is None  # not present in xgboost summary
 
@@ -147,6 +151,12 @@ def test_shorten_model_label_removes_demo_suffixes():
     assert shorten_model_label("transformer_seen_norman2019_demo") == "transformer"
     assert shorten_model_label("mlp_seen_synthetic_demo") == "mlp"
     assert shorten_model_label("custom_model") == "custom_model"
+
+
+def test_normalize_seeded_label_strips_seed_suffixes():
+    assert normalize_seeded_label("transformer_seen_norman2019_seed7") == "transformer_seen_norman2019"
+    assert normalize_seeded_label("mlp_seen_norman2019-s42") == "mlp_seen_norman2019"
+    assert normalize_seeded_label("transformer_seen_norman2019_demo") == "transformer_seen_norman2019"
 
 
 def test_plot_grouped_metric_bars_adds_headroom_for_high_values():

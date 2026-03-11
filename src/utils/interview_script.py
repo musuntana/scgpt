@@ -26,6 +26,20 @@ def build_interview_script(
     transformer_deg100 = _format_metric(
         headline.get("transformer_unseen_top100_deg_overlap")
     )
+    transformer_multiseed_runs = headline.get("transformer_multiseed_num_runs")
+    transformer_multiseed_unseen = _format_mean_std(
+        headline.get("transformer_multiseed_unseen_pearson_mean"),
+        headline.get("transformer_multiseed_unseen_pearson_std"),
+    )
+    transformer_multiseed_deg100 = _format_mean_std(
+        headline.get("transformer_multiseed_unseen_top100_deg_mean"),
+        headline.get("transformer_multiseed_unseen_top100_deg_std"),
+    )
+    transformer_multiseed_suffix = _build_multiseed_suffix(
+        transformer_multiseed_runs,
+        transformer_multiseed_unseen,
+        transformer_multiseed_deg100,
+    )
 
     title = "PerturbScope-GPT interview script"
     live_demo_script = [
@@ -34,6 +48,7 @@ def build_interview_script(
         "Explain that unseen perturbation evaluation is the main generalization metric.",
         f"Point to the Transformer inference preview: `{assets['real_inference_figure']['path']}`.",
         f"Launch the app: `{commands['app']}`.",
+        "If the app is using synthetic fallback artifacts, say that explicitly before discussing any numbers.",
         "Select one perturbation gene, show predicted vs observed delta, then open the target ranking table.",
         "Close by emphasizing reproducibility: doctor, snapshot, showcase, CI, and local-first execution.",
     ]
@@ -42,6 +57,7 @@ def build_interview_script(
         "It only supports single-gene perturbations, not combinatorial perturbations.",
         "The ranking is heuristic and explicitly does not treat attention as causal evidence.",
         "This is a local-first MVP, not a cloud-scale or multi-dataset training platform.",
+        "Synthetic showcase artifacts are for offline engineering demos only and should not be presented as biological evidence.",
     ]
     next_steps = [
         "Evaluate on an additional perturbation dataset once the single-dataset path is fully stable.",
@@ -67,7 +83,7 @@ def build_interview_script(
                     f"Implemented Transformer, MLP, and XGBoost baselines with seen/unseen "
                     f"perturbation evaluation; best unseen Pearson = {best_real_unseen} "
                     f"({best_model}), while the Transformer reached top-100 DEG overlap = "
-                    f"{transformer_deg100}."
+                    f"{transformer_deg100}{transformer_multiseed_suffix}."
                 ),
                 (
                     "Shipped an interview-ready local product surface with Streamlit, notebooks, "
@@ -101,7 +117,7 @@ def build_interview_script(
                 (
                     f"Results: {best_model} is the best unseen-Pearson baseline at {best_real_unseen}; "
                     f"the Transformer remains competitive at {transformer_unseen} and is strong on DEG recovery "
-                    f"with top-100 overlap {transformer_deg100}."
+                    f"with top-100 overlap {transformer_deg100}{transformer_multiseed_suffix}."
                 ),
                 (
                     "Productization: Streamlit UI, notebooks, CI, type checking, pre-commit hooks, "
@@ -148,7 +164,7 @@ def build_interview_script(
                 (
                     f"Implemented multi-model benchmarking with Transformer, MLP, and XGBoost; "
                     f"best unseen Pearson = {best_real_unseen} ({best_model}) with reproducible run summaries "
-                    f"and structured result exports."
+                    f"and structured result exports{transformer_multiseed_suffix}."
                 ),
                 (
                     "Added engineering guardrails including tests, mypy, ruff, pre-commit, CI, and "
@@ -285,6 +301,15 @@ def format_interview_script(script: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _build_multiseed_suffix(num_runs: Any, unseen_text: str, deg100_text: str) -> str:
+    if num_runs is None:
+        return ""
+    return (
+        f"; across {num_runs} real Transformer seeds, unseen Pearson = {unseen_text} "
+        f"and top-100 DEG overlap = {deg100_text}"
+    )
+
+
 def write_interview_script_text(script: dict[str, Any], output_path: str | Path) -> Path:
     """Write the formatted interview script to disk as plain text."""
     destination = Path(output_path)
@@ -297,3 +322,11 @@ def _format_metric(value: Any) -> str:
     if value is None:
         return "n/a"
     return f"{float(value):.4f}"
+
+
+def _format_mean_std(mean: Any, std: Any) -> str:
+    if mean is None:
+        return "n/a"
+    if std is None:
+        return _format_metric(mean)
+    return f"{float(mean):.4f} +/- {float(std):.4f}"

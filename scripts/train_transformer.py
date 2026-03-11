@@ -39,6 +39,12 @@ def parse_args() -> argparse.Namespace:
         choices=["seen", "unseen"],
         help="Which split protocol to train against.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional override for train.seed without editing the YAML file.",
+    )
     return parser.parse_args()
 
 
@@ -46,6 +52,8 @@ def main() -> None:
     args = parse_args()
     model_config = load_yaml(args.model_config)
     train_config_payload = load_yaml(args.train_config)
+    if args.seed is not None:
+        train_config_payload.setdefault("train", {})["seed"] = int(args.seed)
     ensure_keys(
         model_config,
         ["transformer.d_model", "transformer.n_heads", "transformer.n_layers"],

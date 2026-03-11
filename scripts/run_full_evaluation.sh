@@ -13,6 +13,8 @@
 # Outputs (one file per model / split):
 #   artifacts/transformer_seen_norman2019_demo/seen_test_metrics.json
 #   artifacts/transformer_seen_norman2019_demo/unseen_test_metrics.json
+#   artifacts/transformer_seen_norman2019_demo/seen_test_per_perturbation.csv
+#   artifacts/transformer_seen_norman2019_demo/unseen_test_error_summary.json
 #   artifacts/mlp_seen_norman2019_demo/mlp_seen_test_metrics.json
 #   artifacts/mlp_seen_norman2019_demo/mlp_unseen_test_metrics.json
 set -euo pipefail
@@ -74,6 +76,8 @@ if [[ -f "${TRANSFORMER_CKPT}" ]]; then
         --model-type transformer \
         --split-name seen_test \
         --output-path "${TRANSFORMER_DIR}/seen_test_metrics.json" \
+        --per-perturbation-output-path "${TRANSFORMER_DIR}/seen_test_per_perturbation.csv" \
+        --error-summary-output-path "${TRANSFORMER_DIR}/seen_test_error_summary.json" \
         $(deg_flag)
 
     echo "--- Transformer: unseen test ---"
@@ -83,6 +87,8 @@ if [[ -f "${TRANSFORMER_CKPT}" ]]; then
         --model-type transformer \
         --split-name unseen_test \
         --output-path "${TRANSFORMER_DIR}/unseen_test_metrics.json" \
+        --per-perturbation-output-path "${TRANSFORMER_DIR}/unseen_test_per_perturbation.csv" \
+        --error-summary-output-path "${TRANSFORMER_DIR}/unseen_test_error_summary.json" \
         $(deg_flag)
 else
     echo "[SKIP] Transformer checkpoint not found: ${TRANSFORMER_CKPT}"
@@ -101,6 +107,8 @@ if [[ -f "${MLP_CKPT}" ]]; then
         --model-config configs/model.yaml \
         --split-name seen_test \
         --output-path "${MLP_DIR}/mlp_seen_test_metrics.json" \
+        --per-perturbation-output-path "${MLP_DIR}/mlp_seen_test_per_perturbation.csv" \
+        --error-summary-output-path "${MLP_DIR}/mlp_seen_test_error_summary.json" \
         $(deg_flag)
 
     echo "--- MLP: unseen test ---"
@@ -111,6 +119,8 @@ if [[ -f "${MLP_CKPT}" ]]; then
         --model-config configs/model.yaml \
         --split-name unseen_test \
         --output-path "${MLP_DIR}/mlp_unseen_test_metrics.json" \
+        --per-perturbation-output-path "${MLP_DIR}/mlp_unseen_test_per_perturbation.csv" \
+        --error-summary-output-path "${MLP_DIR}/mlp_unseen_test_error_summary.json" \
         $(deg_flag)
 else
     echo "[SKIP] MLP checkpoint not found: ${MLP_CKPT}"

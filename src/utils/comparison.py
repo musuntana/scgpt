@@ -5,6 +5,7 @@ can be tested independently from the Streamlit app.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -12,6 +13,49 @@ import numpy as np
 from matplotlib.axes import Axes
 
 from src.data.io import read_json
+
+
+def _extract_model_type(summary: dict, label: str) -> str:
+    model_section = summary.get("model", {})
+    if isinstance(model_section, dict) and model_section.get("model_type") is not None:
+        return str(model_section["model_type"])
+    if summary.get("model_type") is not None:
+        return str(summary["model_type"])
+    return shorten_model_label(label)
+
+
+def _extract_dataset_name(summary: dict) -> str | None:
+    dataset_section = summary.get("dataset", {})
+    if isinstance(dataset_section, dict) and dataset_section.get("name") is not None:
+        return str(dataset_section["name"])
+    return None
+
+
+def _extract_train_protocol(summary: dict) -> str | None:
+    split_section = summary.get("split", {})
+    if isinstance(split_section, dict) and split_section.get("train_protocol") is not None:
+        return str(split_section["train_protocol"])
+    if summary.get("train_split_prefix") is not None:
+        return str(summary["train_split_prefix"])
+    return None
+
+
+def _extract_seed(summary: dict) -> int | None:
+    training_section = summary.get("training", {})
+    if isinstance(training_section, dict) and training_section.get("seed") is not None:
+        return int(training_section["seed"])
+    xgboost_params = summary.get("xgboost_params", {})
+    if isinstance(xgboost_params, dict) and xgboost_params.get("random_state") is not None:
+        return int(xgboost_params["random_state"])
+    if summary.get("seed") is not None:
+        return int(summary["seed"])
+    return None
+
+
+def normalize_seeded_label(label: str) -> str:
+    """Strip trailing seed and demo suffixes from artifact labels."""
+    normalized = re.sub(r"([_-](seed|s)\d+)$", "", label)
+    return normalized.removesuffix("_demo")
 
 
 def extract_summary_row(summary: dict, label: str) -> dict | None:
@@ -33,6 +77,11 @@ def extract_summary_row(summary: dict, label: str) -> dict | None:
     unseen = test_metrics.get("unseen_test", {})
     return {
         "model": label,
+        "base_model_label": normalize_seeded_label(label),
+        "model_type": _extract_model_type(summary, label),
+        "dataset_name": _extract_dataset_name(summary),
+        "train_protocol": _extract_train_protocol(summary),
+        "seed": _extract_seed(summary),
         "seen_pearson": seen.get("pearson_per_perturbation"),
         "seen_mse": seen.get("mse_per_perturbation"),
         "unseen_pearson": unseen.get("pearson_per_perturbation"),

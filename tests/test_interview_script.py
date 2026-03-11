@@ -65,6 +65,25 @@ def _create_snapshot_backing_files(root: Path) -> None:
     )
     _write_json(
         root,
+        "artifacts/multi_seed_report.json",
+        """
+[
+  {
+    "dataset_name": "scperturb_norman2019",
+    "train_protocol": "seen",
+    "model_type": "transformer",
+    "num_runs": 3,
+    "seeds": [7, 21, 42],
+    "unseen_pearson_mean": 0.8304,
+    "unseen_pearson_std": 0.0067,
+    "unseen_top100_deg_mean": 0.9850,
+    "unseen_top100_deg_std": 0.0067
+  }
+]
+""".strip(),
+    )
+    _write_json(
+        root,
         "artifacts/mlp_seen_norman2019_demo/run_summary.json",
         """
 {
@@ -100,6 +119,7 @@ def test_build_interview_script_contains_expected_sections(tmp_path: Path) -> No
     assert len(script["tracks"]["ai4bio"]["resume_bullets"]) == 3
     assert len(script["tracks"]["ml-engineering"]["thirty_second_pitch"]) == 4
     assert "XGBoost" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][4]
+    assert "0.8304 +/- 0.0067" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][4]
 
 
 def test_build_interview_script_can_select_single_track(tmp_path: Path) -> None:
@@ -125,6 +145,7 @@ def test_format_interview_script_mentions_key_metrics_and_sections(tmp_path: Pat
     assert "Live demo script:" in report
     assert "0.8405" in report
     assert "0.9755" in report
+    assert "0.8304 +/- 0.0067" in report
 
 
 def test_write_interview_script_text_creates_file(tmp_path: Path) -> None:

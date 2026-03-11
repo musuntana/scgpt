@@ -46,6 +46,12 @@ def parse_args() -> argparse.Namespace:
         choices=["seen", "unseen"],
         help="Which split protocol to use.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional override for train.seed without editing the YAML file.",
+    )
     return parser.parse_args()
 
 
@@ -73,6 +79,8 @@ def _evaluate_numpy_baseline(
 
 def _train_xgboost(args: argparse.Namespace) -> None:
     train_config_payload = load_yaml(args.train_config)
+    if args.seed is not None:
+        train_config_payload.setdefault("train", {})["seed"] = int(args.seed)
     seed_everything(int(train_config_payload["train"]["seed"]))
     bundle = load_processed_bundle(args.bundle_dir)
     splits = bundle["splits"]
@@ -121,6 +129,10 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     summary = {
         "model_type": "xgboost",
         "train_split_prefix": args.split_prefix,
+        "seed": int(train_config_payload["train"]["seed"]),
+        "training": {
+            "seed": int(train_config_payload["train"]["seed"]),
+        },
         "train_size": int(train_idx.shape[0]),
         "feature_dim": int(features.shape[1]),
         "target_dim": int(targets.shape[1]),
@@ -135,6 +147,8 @@ def _train_xgboost(args: argparse.Namespace) -> None:
 
 def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     train_config_payload = load_yaml(train_config_path)
+    if args.seed is not None:
+        train_config_payload.setdefault("train", {})["seed"] = int(args.seed)
     seed_everything(int(train_config_payload["train"]["seed"]))
     trainer_config = TrainerConfig.from_dict(train_config_payload)
     bundle = load_processed_bundle(args.bundle_dir)

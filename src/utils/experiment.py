@@ -74,11 +74,14 @@ def build_run_summary(
     history_path: str | Path | None = None,
     seen_metrics_path: str | Path | None = None,
     unseen_metrics_path: str | Path | None = None,
+    seed: int | None = None,
 ) -> dict[str, Any]:
     """Build a structured local summary artifact for a completed training run."""
     data_config = load_yaml(data_config_path)
     model_config = load_yaml(model_config_path)
     train_config = load_yaml(train_config_path)
+    if seed is not None:
+        train_config.setdefault("train", {})["seed"] = int(seed)
     checkpoint_metric = str(train_config["train"]["checkpoint_metric"])
 
     history: list[dict[str, Any]] = []

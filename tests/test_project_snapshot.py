@@ -101,6 +101,21 @@ def _xgboost_summary(unseen_pearson: float, unseen_mse: float) -> dict:
     }
 
 
+def _multi_seed_report() -> list[dict]:
+    return [
+        {
+            "dataset_name": "scperturb_norman2019",
+            "train_protocol": "seen",
+            "model_type": "transformer",
+            "num_runs": 3,
+            "seeds": [7, 21, 42],
+            "unseen_pearson_mean": 0.8304,
+            "unseen_pearson_std": 0.0067,
+            "unseen_top100_deg_mean": 0.9850,
+            "unseen_top100_deg_std": 0.0067,
+        }
+    ]
+
 def test_build_project_snapshot_selects_best_real_model_and_deg_story(
     tmp_path: Path,
 ) -> None:
@@ -120,12 +135,15 @@ def test_build_project_snapshot_selects_best_real_model_and_deg_story(
         "artifacts/xgboost_seen_norman2019_demo/xgboost_run_summary.json",
         _xgboost_summary(0.8405, 0.00084),
     )
+    _write_json(tmp_path, "artifacts/multi_seed_report.json", _multi_seed_report())
 
     snapshot = build_project_snapshot(tmp_path)
 
     assert snapshot["headline"]["best_real_unseen_model"] == "XGBoost"
     assert snapshot["headline"]["best_real_unseen_pearson"] == 0.8405
     assert snapshot["headline"]["transformer_unseen_top100_deg_overlap"] == 0.9755
+    assert snapshot["headline"]["transformer_multiseed_num_runs"] == 3
+    assert snapshot["headline"]["transformer_multiseed_unseen_pearson_mean"] == 0.8304
     assert snapshot["headline"]["all_real_models_unseen_pearson_ge_0_82"] is True
     assert len(snapshot["real_model_rows"]) == 3
 
@@ -169,6 +187,7 @@ def test_format_and_write_project_snapshot(tmp_path: Path) -> None:
         "artifacts/transformer_seen_norman2019_demo/run_summary.json",
         _transformer_summary(0.8243, 0.9755),
     )
+    _write_json(tmp_path, "artifacts/multi_seed_report.json", _multi_seed_report())
     snapshot = build_project_snapshot(tmp_path)
 
     report = format_project_snapshot(snapshot)
@@ -177,6 +196,7 @@ def test_format_and_write_project_snapshot(tmp_path: Path) -> None:
 
     assert "PerturbScope-GPT snapshot" in report
     assert "Best real unseen Pearson" in report
+    assert "Transformer multi-seed unseen Pearson / top-100 DEG overlap" in report
     assert "make snapshot" in report
     assert destination == output_path
     assert output_path.exists()

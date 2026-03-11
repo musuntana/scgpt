@@ -42,6 +42,11 @@ def test_format_showcase_report_includes_talk_track_and_commands() -> None:
             "best_real_unseen_pearson": 0.8405,
             "transformer_unseen_pearson": 0.8243,
             "transformer_unseen_top100_deg_overlap": 0.9755,
+            "transformer_multiseed_num_runs": 3,
+            "transformer_multiseed_unseen_pearson_mean": 0.8304,
+            "transformer_multiseed_unseen_pearson_std": 0.0067,
+            "transformer_multiseed_unseen_top100_deg_mean": 0.9850,
+            "transformer_multiseed_unseen_top100_deg_std": 0.0067,
         },
         "assets": {
             "real_comparison_figure": {
@@ -68,5 +73,6 @@ def test_format_showcase_report_includes_talk_track_and_commands() -> None:
 
     assert "PerturbScope-GPT showcase" in report
     assert "Best unseen Pearson = XGBoost (0.8405)".lower() in report.lower()
+    assert "Anchor stability across 3 real Transformer seeds" in report
     assert "Streamlit" in report
     assert "./scripts/run_showcase.sh --launch-app" in report

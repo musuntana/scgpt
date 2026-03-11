@@ -38,6 +38,33 @@ def format_showcase_report(
     """Render a concise live-demo checklist for local use."""
     headline = snapshot["headline"]
     assets = snapshot["assets"]
+    talk_track = [
+        (
+            f"Lead with best unseen Pearson = "
+            f"{headline.get('best_real_unseen_model') or 'n/a'} "
+            f"({_format_metric(headline.get('best_real_unseen_pearson'))})"
+        ),
+        (
+            f"Highlight Transformer unseen Pearson / top-100 DEG overlap = "
+            f"{_format_metric(headline.get('transformer_unseen_pearson'))} / "
+            f"{_format_metric(headline.get('transformer_unseen_top100_deg_overlap'))}"
+        ),
+    ]
+    if headline.get("transformer_multiseed_num_runs") is not None:
+        talk_track.append(
+            f"Anchor stability across {headline.get('transformer_multiseed_num_runs')} "
+            f"real Transformer seeds: unseen Pearson = "
+            f"{_format_mean_std(headline.get('transformer_multiseed_unseen_pearson_mean'), headline.get('transformer_multiseed_unseen_pearson_std'))}, "
+            f"top-100 DEG overlap = "
+            f"{_format_mean_std(headline.get('transformer_multiseed_unseen_top100_deg_mean'), headline.get('transformer_multiseed_unseen_top100_deg_std'))}"
+        )
+    talk_track.extend(
+        [
+            f"Show real comparison figure: {assets['real_comparison_figure']['path']}",
+            f"Show inference preview: {assets['real_inference_figure']['path']}",
+            "Open Streamlit and walk through one perturbation end-to-end",
+        ]
+    )
 
     lines = [
         "PerturbScope-GPT showcase",
@@ -61,34 +88,18 @@ def format_showcase_report(
         ),
         "",
         "Talk track:",
-        (
-            "  "
-            f"1. Lead with best unseen Pearson = "
-            f"{headline.get('best_real_unseen_model') or 'n/a'} "
-            f"({_format_metric(headline.get('best_real_unseen_pearson'))})"
-        ),
-        (
-            "  "
-            f"2. Highlight Transformer unseen Pearson / top-100 DEG overlap = "
-            f"{_format_metric(headline.get('transformer_unseen_pearson'))} / "
-            f"{_format_metric(headline.get('transformer_unseen_top100_deg_overlap'))}"
-        ),
-        (
-            "  "
-            f"3. Show real comparison figure: {assets['real_comparison_figure']['path']}"
-        ),
-        (
-            "  "
-            f"4. Show inference preview: {assets['real_inference_figure']['path']}"
-        ),
-        "  5. Open Streamlit and walk through one perturbation end-to-end",
+    ]
+    lines.extend([f"  {index}. {item}" for index, item in enumerate(talk_track, start=1)])
+    lines.extend(
+        [
         "",
         "Recommended commands:",
         "  make doctor",
         "  make snapshot",
         "  ./scripts/run_app.sh",
         "  ./scripts/run_showcase.sh --launch-app",
-    ]
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -96,3 +107,11 @@ def _format_metric(value: Any) -> str:
     if value is None:
         return "n/a"
     return f"{float(value):.4f}"
+
+
+def _format_mean_std(mean: Any, std: Any) -> str:
+    if mean is None:
+        return "n/a"
+    if std is None:
+        return _format_metric(mean)
+    return f"{float(mean):.4f} +/- {float(std):.4f}"

@@ -166,26 +166,35 @@ class Trainer:
                 "pearson_per_perturbation": 0.0,
                 "pearson_per_gene": 0.0,
             }
+        predictions, targets, perturbations = self.collect_outputs(loader)
 
+        return compute_regression_metrics(
+            predictions=predictions,
+            targets=targets,
+            perturbation_index=perturbations,
+        )
+
+    @torch.no_grad()
+    def collect_outputs(
+        self, loader: DataLoader
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Collect raw predictions, targets, and perturbation indices from a loader."""
         self.model.eval()
         predictions: list[np.ndarray] = []
         targets: list[np.ndarray] = []
         perturbations: list[np.ndarray] = []
-
         for batch in loader:
             control_expression = batch["control_expression"].to(self.device)
             perturbation_index = batch["perturbation_index"].to(self.device)
             target_delta = batch["target_delta"].to(self.device)
-
             batch_predictions = self.model(control_expression, perturbation_index)
             predictions.append(batch_predictions.detach().cpu().numpy())
             targets.append(target_delta.detach().cpu().numpy())
             perturbations.append(perturbation_index.detach().cpu().numpy())
-
-        return compute_regression_metrics(
-            predictions=np.concatenate(predictions, axis=0),
-            targets=np.concatenate(targets, axis=0),
-            perturbation_index=np.concatenate(perturbations, axis=0),
+        return (
+            np.concatenate(predictions, axis=0),
+            np.concatenate(targets, axis=0),
+            np.concatenate(perturbations, axis=0),
         )
 
     @torch.no_grad()
@@ -193,19 +202,8 @@ class Trainer:
         self, loader: DataLoader
     ) -> tuple[np.ndarray, np.ndarray]:
         """Collect raw predictions and perturbation indices from a loader."""
-        self.model.eval()
-        predictions: list[np.ndarray] = []
-        perturbations: list[np.ndarray] = []
-        for batch in loader:
-            control_expression = batch["control_expression"].to(self.device)
-            perturbation_index = batch["perturbation_index"].to(self.device)
-            batch_predictions = self.model(control_expression, perturbation_index)
-            predictions.append(batch_predictions.detach().cpu().numpy())
-            perturbations.append(perturbation_index.detach().cpu().numpy())
-        return (
-            np.concatenate(predictions, axis=0),
-            np.concatenate(perturbations, axis=0),
-        )
+        predictions, _, perturbations = self.collect_outputs(loader)
+        return predictions, perturbations
 
     def save_checkpoint(self, filename: str) -> None:
         checkpoint_path = self.output_dir / filename

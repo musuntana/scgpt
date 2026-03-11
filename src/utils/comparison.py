@@ -5,7 +5,11 @@ can be tested independently from the Streamlit app.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
+
+import numpy as np
+from matplotlib.axes import Axes
 
 from src.data.io import read_json
 
@@ -73,3 +77,80 @@ def scan_artifact_comparison_rows(artifact_root: str | Path) -> list[dict]:
             if row:
                 rows.append(row)
     return rows
+
+
+def shorten_model_label(label: str) -> str:
+    """Collapse artifact directory names into short model labels for charts."""
+    shortened = label
+    for suffix in ("_seen_norman2019_demo", "_seen_synthetic_demo"):
+        shortened = shortened.removesuffix(suffix)
+    return shortened
+
+
+def _annotation_offset(values: Sequence[float]) -> float:
+    peak = max((abs(float(value)) for value in values), default=0.0)
+    if peak == 0.0:
+        return 0.05
+    if peak >= 1.0:
+        return max(peak * 0.03, 0.02)
+    if peak >= 0.1:
+        return max(peak * 0.03, 0.01)
+    if peak >= 0.01:
+        return max(peak * 0.03, 0.001)
+    return max(peak * 0.03, 0.0002)
+
+
+def plot_grouped_metric_bars(
+    ax: Axes,
+    models: Sequence[str],
+    seen_vals: Sequence[float],
+    unseen_vals: Sequence[float],
+    *,
+    ylabel: str,
+    title: str,
+    seen_label: str = "Seen test",
+    unseen_label: str = "Unseen test",
+    seen_color: str = "steelblue",
+    unseen_color: str = "coral",
+    annotate: bool = False,
+    value_format: str = "{:.3f}",
+    x_tick_rotation: int = 15,
+) -> None:
+    """Draw a grouped bar chart with enough headroom for value labels."""
+    x = np.arange(len(models))
+    width = 0.35
+    seen_bars = ax.bar(x - width / 2, seen_vals, width, label=seen_label, color=seen_color)
+    unseen_bars = ax.bar(x + width / 2, unseen_vals, width, label=unseen_label, color=unseen_color)
+
+    numeric_values = [float(value) for value in [*seen_vals, *unseen_vals]]
+    offset = _annotation_offset(numeric_values)
+    y_min = min(0.0, min(numeric_values, default=0.0))
+    if y_min < 0.0:
+        y_min -= offset * 2.0
+    y_max = max(numeric_values, default=0.0) + offset * 2.0
+    if y_max <= y_min:
+        y_max = y_min + 1.0
+
+    ax.set_ylim(y_min, y_max)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=x_tick_rotation, ha="right", fontsize=8)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title, pad=10)
+    ax.legend(fontsize=8)
+
+    if not annotate:
+        return
+
+    for bars in (seen_bars, unseen_bars):
+        for bar in bars:
+            value = float(bar.get_height())
+            y_pos = value + offset if value >= 0.0 else value - offset
+            vertical_alignment = "bottom" if value >= 0.0 else "top"
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                y_pos,
+                value_format.format(value),
+                ha="center",
+                va=vertical_alignment,
+                fontsize=9,
+            )

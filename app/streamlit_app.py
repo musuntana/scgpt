@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -24,7 +23,11 @@ from src.evaluation.inference import (
 )
 from src.evaluation.metrics import topk_overlap
 from src.ranking.target_ranking import build_target_ranking
-from src.utils.comparison import scan_artifact_comparison_rows
+from src.utils.comparison import (
+    plot_grouped_metric_bars,
+    scan_artifact_comparison_rows,
+    shorten_model_label,
+)
 from src.utils.config import load_yaml
 
 REAL_BUNDLE_DIR = "data/processed/norman2019_demo_bundle"
@@ -82,19 +85,6 @@ def load_optional_list(path: str) -> list:
         data = json.load(fh)
     return data if isinstance(data, list) else []
 
-
-
-
-def _bar_chart(ax, models: list[str], seen_vals: list, unseen_vals: list, ylabel: str, title: str):
-    x = np.arange(len(models))
-    width = 0.35
-    ax.bar(x - width / 2, seen_vals, width, label="seen test", color="steelblue")
-    ax.bar(x + width / 2, unseen_vals, width, label="unseen test", color="coral")
-    ax.set_xticks(x)
-    ax.set_xticklabels(models, rotation=15, ha="right", fontsize=8)
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.legend(fontsize=8)
 
 
 @st.cache_data(show_spinner=False)
@@ -420,22 +410,52 @@ with comparison_tab:
      st.dataframe(df_display.style.format("{:.4f}", na_rep="—"), use_container_width=True)
 
      # Bar charts — Pearson and MSE
-     pearson_models = [r["model"] for r in rows if r.get("seen_pearson") is not None]
-     if pearson_models:
+     pearson_rows = [
+         row
+         for row in rows
+         if row.get("seen_pearson") is not None and row.get("unseen_pearson") is not None
+     ]
+     mse_rows = [
+         row
+         for row in rows
+         if row.get("seen_mse") is not None and row.get("unseen_mse") is not None
+     ]
+     if pearson_rows or mse_rows:
          fig_cmp, (ax_p, ax_m) = plt.subplots(1, 2, figsize=(12, 4))
-         seen_p = [r["seen_pearson"] for r in rows if r.get("seen_pearson") is not None]
-         unseen_p = [r["unseen_pearson"] for r in rows if r.get("unseen_pearson") is not None]
-         seen_mse = [r["seen_mse"] for r in rows if r.get("seen_mse") is not None]
-         unseen_mse = [r["unseen_mse"] for r in rows if r.get("unseen_mse") is not None]
+         if pearson_rows:
+             pearson_labels = [shorten_model_label(row["model"]) for row in pearson_rows]
+             plot_grouped_metric_bars(
+                 ax_p,
+                 pearson_labels,
+                 [row["seen_pearson"] for row in pearson_rows],
+                 [row["unseen_pearson"] for row in pearson_rows],
+                 ylabel="Pearson (per-perturbation)",
+                 title="Pearson Correlation",
+                 annotate=len(pearson_labels) <= 6,
+                 value_format="{:.3f}",
+             )
+         else:
+             ax_p.set_title("Pearson Correlation")
+             ax_p.text(0.5, 0.5, "Pearson metrics unavailable", ha="center", va="center")
+             ax_p.set_axis_off()
 
-         short_labels = [
-             m.replace("_seen_norman2019_demo", "").replace("_seen_synthetic_demo", "")
-             for m in pearson_models
-         ]
-         _bar_chart(ax_p, short_labels, seen_p, unseen_p,
-                    ylabel="Pearson (per-perturbation)", title="Pearson Correlation")
-         _bar_chart(ax_m, short_labels, seen_mse, unseen_mse,
-                    ylabel="MSE (per-perturbation)", title="MSE per Perturbation")
+         if mse_rows:
+             mse_labels = [shorten_model_label(row["model"]) for row in mse_rows]
+             plot_grouped_metric_bars(
+                 ax_m,
+                 mse_labels,
+                 [row["seen_mse"] for row in mse_rows],
+                 [row["unseen_mse"] for row in mse_rows],
+                 ylabel="MSE (per-perturbation)",
+                 title="MSE per Perturbation",
+                 annotate=len(mse_labels) <= 6,
+                 value_format="{:.4f}",
+             )
+         else:
+             ax_m.set_title("MSE per Perturbation")
+             ax_m.text(0.5, 0.5, "MSE metrics unavailable", ha="center", va="center")
+             ax_m.set_axis_off()
+
          fig_cmp.tight_layout()
          st.pyplot(fig_cmp, use_container_width=True)
          plt.close(fig_cmp)

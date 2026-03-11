@@ -4,9 +4,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import matplotlib
 import pytest
 
-from src.utils.comparison import extract_summary_row, scan_artifact_comparison_rows
+from src.utils.comparison import (
+    extract_summary_row,
+    plot_grouped_metric_bars,
+    scan_artifact_comparison_rows,
+    shorten_model_label,
+)
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------------------------
 # extract_summary_row
@@ -132,3 +141,34 @@ def test_scan_skips_subdirs_without_metrics(tmp_path):
     _write_json(tmp_path / "bad_model" / "run_summary.json", {"no_metrics": {}})
     rows = scan_artifact_comparison_rows(tmp_path)
     assert rows == []
+
+
+def test_shorten_model_label_removes_demo_suffixes():
+    assert shorten_model_label("transformer_seen_norman2019_demo") == "transformer"
+    assert shorten_model_label("mlp_seen_synthetic_demo") == "mlp"
+    assert shorten_model_label("custom_model") == "custom_model"
+
+
+def test_plot_grouped_metric_bars_adds_headroom_for_high_values():
+    figure, axis = plt.subplots(figsize=(8, 4.8))
+    seen_values = [0.999, 0.998, 0.999]
+    unseen_values = [0.999, 0.999, 1.0]
+
+    plot_grouped_metric_bars(
+        axis,
+        ["Transformer", "MLP", "XGBoost"],
+        seen_values,
+        unseen_values,
+        ylabel="Per-perturbation Pearson",
+        title="Synthetic Demo Bundle: Model Comparison",
+        annotate=True,
+    )
+
+    y_min, y_max = axis.get_ylim()
+    assert y_min == 0.0
+    assert y_max > max([*seen_values, *unseen_values])
+    assert len(axis.texts) == 6
+    for text in axis.texts:
+        assert text.get_position()[1] < y_max
+
+    plt.close(figure)

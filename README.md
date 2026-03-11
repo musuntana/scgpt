@@ -105,6 +105,89 @@ make lint        # ruff check --fix
 make typecheck   # mypy src/
 ```
 
+Inspect local project/demo readiness:
+
+```bash
+./scripts/run_doctor.sh
+# or
+make doctor
+```
+
+The doctor command checks:
+- core repository files (`README.md`, `PROJECT_PLAN.md`, `pyproject.toml`, `uv.lock`, CI workflow)
+- local environment pinning (`.python-version`, `.venv`)
+- notebooks
+- offline synthetic demo artifacts
+- real Norman2019 bundle and result artifacts
+- model-comparison summaries for MLP and XGBoost
+
+Export an interview-friendly project snapshot:
+
+```bash
+./scripts/run_snapshot.sh
+# or
+make snapshot
+```
+
+Useful variants:
+
+```bash
+./scripts/run_snapshot.sh --json
+./scripts/run_snapshot.sh --output-path artifacts/project_snapshot.json
+```
+
+The snapshot command summarizes:
+- project readiness modes from `doctor`
+- headline real-data results across Transformer / MLP / XGBoost
+- Transformer DEG-overlap highlights
+- key demo asset paths
+- recommended commands for a live walkthrough
+
+Prepare a live interview/demo flow:
+
+```bash
+./scripts/run_showcase.sh
+# or
+make showcase
+```
+
+Launch the showcase and open the app immediately:
+
+```bash
+./scripts/run_showcase.sh --launch-app
+```
+
+The showcase command:
+- reuses real Norman2019 artifacts when available
+- regenerates the offline synthetic showcase only when needed
+- writes `artifacts/project_snapshot.json`
+- prints the recommended order for a live walkthrough
+
+Export an interview speaking script:
+
+```bash
+./scripts/run_pitch.sh
+# or
+make pitch
+```
+
+Useful variants:
+
+```bash
+./scripts/run_pitch.sh --track ai4bio
+./scripts/run_pitch.sh --track ml-engineering
+./scripts/run_pitch.sh --json
+./scripts/run_pitch.sh --output-path artifacts/interview_script.txt
+```
+
+The pitch command includes:
+- 30-second project intro
+- 2-minute technical walkthrough
+- live demo script
+- honest limitations
+- next-step talking points
+- suggested answers to common interviewer questions
+
 Install pre-commit hooks (runs ruff automatically before each commit):
 
 ```bash

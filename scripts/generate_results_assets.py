@@ -9,7 +9,6 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +26,7 @@ from src.evaluation.inference import (
     summarize_perturbation_fit,
 )
 from src.ranking.target_ranking import build_target_ranking
+from src.utils.comparison import plot_grouped_metric_bars
 from src.utils.config import load_yaml
 
 
@@ -114,22 +114,19 @@ def generate_model_comparison_figure(
     ]
 
     figure, axis = plt.subplots(figsize=(8, 4.8))
-    x = np.arange(len(models))
-    width = 0.34
-
-    axis.bar(x - width / 2, seen_pearson, width, label="seen_test")
-    axis.bar(x + width / 2, unseen_pearson, width, label="unseen_test")
-    axis.set_ylim(0.0, 1.0)
-    axis.set_ylabel("Per-perturbation Pearson")
-    axis.set_title(title)
-    axis.set_xticks(x)
-    axis.set_xticklabels(models)
-    axis.legend()
-
-    for x_pos, value in zip(x - width / 2, seen_pearson, strict=True):
-        axis.text(x_pos, value + 0.02, f"{value:.3f}", ha="center", va="bottom", fontsize=9)
-    for x_pos, value in zip(x + width / 2, unseen_pearson, strict=True):
-        axis.text(x_pos, value + 0.02, f"{value:.3f}", ha="center", va="bottom", fontsize=9)
+    plot_grouped_metric_bars(
+        axis,
+        models,
+        seen_pearson,
+        unseen_pearson,
+        ylabel="Per-perturbation Pearson",
+        title=title,
+        seen_label="Seen test",
+        unseen_label="Unseen test",
+        annotate=True,
+        value_format="{:.3f}",
+        x_tick_rotation=0,
+    )
 
     figure.tight_layout()
     figure.savefig(output_path, dpi=180, bbox_inches="tight")

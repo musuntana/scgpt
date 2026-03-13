@@ -116,6 +116,41 @@ def _multi_seed_report() -> list[dict]:
         }
     ]
 
+
+def _error_summary(
+    split_name: str,
+    *,
+    num_perturbations: int,
+    dominant_failure_mode: str,
+    dominant_failure_mode_count: int,
+    worst_pearson_perturbation: str,
+    worst_pearson_value: float,
+    worst_mse_perturbation: str,
+    worst_mse_value: float,
+) -> dict:
+    return {
+        "split_name": split_name,
+        "model_type": "transformer",
+        "num_perturbations": num_perturbations,
+        "failure_mode_counts": {
+            dominant_failure_mode: dominant_failure_mode_count,
+        },
+        "worst_by_pearson": [
+            {
+                "perturbation": worst_pearson_perturbation,
+                "pearson": worst_pearson_value,
+                "failure_mode": dominant_failure_mode,
+            }
+        ],
+        "worst_by_mse": [
+            {
+                "perturbation": worst_mse_perturbation,
+                "mse": worst_mse_value,
+                "failure_mode": dominant_failure_mode,
+            }
+        ],
+    }
+
 def test_build_project_snapshot_selects_best_real_model_and_deg_story(
     tmp_path: Path,
 ) -> None:
@@ -136,6 +171,34 @@ def test_build_project_snapshot_selects_best_real_model_and_deg_story(
         _xgboost_summary(0.8405, 0.00084),
     )
     _write_json(tmp_path, "artifacts/multi_seed_report.json", _multi_seed_report())
+    _write_json(
+        tmp_path,
+        "artifacts/transformer_seen_norman2019_demo/seen_test_error_summary.json",
+        _error_summary(
+            "seen_test",
+            num_perturbations=105,
+            dominant_failure_mode="low_signal_condition",
+            dominant_failure_mode_count=89,
+            worst_pearson_perturbation="TSC22D1",
+            worst_pearson_value=0.1466,
+            worst_mse_perturbation="CEBPE",
+            worst_mse_value=0.0281,
+        ),
+    )
+    _write_json(
+        tmp_path,
+        "artifacts/transformer_seen_norman2019_demo/unseen_test_error_summary.json",
+        _error_summary(
+            "unseen_test",
+            num_perturbations=10,
+            dominant_failure_mode="low_signal_condition",
+            dominant_failure_mode_count=10,
+            worst_pearson_perturbation="MAP2K6",
+            worst_pearson_value=0.5648,
+            worst_mse_perturbation="FOXO4",
+            worst_mse_value=0.0016,
+        ),
+    )
 
     snapshot = build_project_snapshot(tmp_path)
 
@@ -145,6 +208,10 @@ def test_build_project_snapshot_selects_best_real_model_and_deg_story(
     assert snapshot["headline"]["transformer_multiseed_num_runs"] == 3
     assert snapshot["headline"]["transformer_multiseed_unseen_pearson_mean"] == 0.8304
     assert snapshot["headline"]["all_real_models_unseen_pearson_ge_0_82"] is True
+    assert (
+        snapshot["transformer_error_highlights"]["unseen_test"]["worst_pearson_perturbation"]
+        == "MAP2K6"
+    )
     assert len(snapshot["real_model_rows"]) == 3
 
 
@@ -188,6 +255,20 @@ def test_format_and_write_project_snapshot(tmp_path: Path) -> None:
         _transformer_summary(0.8243, 0.9755),
     )
     _write_json(tmp_path, "artifacts/multi_seed_report.json", _multi_seed_report())
+    _write_json(
+        tmp_path,
+        "artifacts/transformer_seen_norman2019_demo/unseen_test_error_summary.json",
+        _error_summary(
+            "unseen_test",
+            num_perturbations=10,
+            dominant_failure_mode="low_signal_condition",
+            dominant_failure_mode_count=10,
+            worst_pearson_perturbation="MAP2K6",
+            worst_pearson_value=0.5648,
+            worst_mse_perturbation="FOXO4",
+            worst_mse_value=0.0016,
+        ),
+    )
     snapshot = build_project_snapshot(tmp_path)
 
     report = format_project_snapshot(snapshot)
@@ -197,6 +278,9 @@ def test_format_and_write_project_snapshot(tmp_path: Path) -> None:
     assert "PerturbScope-GPT snapshot" in report
     assert "Best real unseen Pearson" in report
     assert "Transformer multi-seed unseen Pearson / top-100 DEG overlap" in report
+    assert "Transformer error-analysis highlights" in report
+    assert "MAP2K6" in report
+    assert "FOXO4" in report
     assert "make snapshot" in report
     assert destination == output_path
     assert output_path.exists()

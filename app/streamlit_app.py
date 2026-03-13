@@ -16,6 +16,7 @@ from src.data.pairing import load_processed_bundle
 from src.evaluation.deg import DEG_ARTIFACT_FILENAME, DEG_METADATA_FILENAME, load_deg_artifact
 from src.evaluation.error_analysis import (
     build_failure_mode_count_frame,
+    build_selected_condition_story,
     build_worst_conditions_frame,
     select_perturbation_diagnostics,
 )
@@ -259,6 +260,7 @@ def display_selected_split_diagnostics(
     split_label: str,
     perturbation_name: str,
     diagnostics: dict,
+    error_summary: dict,
 ) -> None:
     st.write(split_label)
     if not diagnostics:
@@ -266,6 +268,15 @@ def display_selected_split_diagnostics(
             f"`{perturbation_name}` is not present in the saved {split_label.lower()} artifact."
         )
         return
+    story = build_selected_condition_story(
+        perturbation_name=perturbation_name,
+        diagnostics=diagnostics,
+        error_summary=error_summary,
+    )
+    if story:
+        getattr(st, story["status"])(story["headline"])
+        if story["details"]:
+            st.markdown("\n".join(f"- {detail}" for detail in story["details"]))
 
     summary_df = pd.DataFrame(
         [
@@ -273,7 +284,7 @@ def display_selected_split_diagnostics(
                 "Samples": diagnostics.get("sample_count"),
                 "Pearson": diagnostics.get("pearson"),
                 "MSE": diagnostics.get("mse"),
-                "Failure Mode": diagnostics.get("failure_mode", "n/a"),
+                "Failure Mode": story.get("failure_mode_label", diagnostics.get("failure_mode", "n/a")),
                 "Error/Signal": diagnostics.get("error_to_signal_ratio"),
             }
         ]
@@ -495,12 +506,14 @@ with inference_tab:
              "Seen split",
              selected_perturbation,
              selected_seen_diagnostics,
+            seen_error_summary,
          )
      with diag_right:
          display_selected_split_diagnostics(
              "Unseen split",
              selected_perturbation,
              selected_unseen_diagnostics,
+            unseen_error_summary,
          )
  if selected_deg_df.empty:
      st.warning(

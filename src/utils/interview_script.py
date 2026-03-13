@@ -20,6 +20,7 @@ def build_interview_script(
     headline = snapshot["headline"]
     assets = snapshot["assets"]
     commands = snapshot["commands"]
+    unseen_error = snapshot.get("transformer_error_highlights", {}).get("unseen_test", {})
     best_model = headline.get("best_real_unseen_model") or "best baseline"
     best_real_unseen = _format_metric(headline.get("best_real_unseen_pearson"))
     transformer_unseen = _format_metric(headline.get("transformer_unseen_pearson"))
@@ -40,6 +41,7 @@ def build_interview_script(
         transformer_multiseed_unseen,
         transformer_multiseed_deg100,
     )
+    unseen_error_story = _build_unseen_error_story(unseen_error)
 
     title = "PerturbScope-GPT interview script"
     live_demo_script = [
@@ -50,8 +52,14 @@ def build_interview_script(
         f"Launch the app: `{commands['app']}`.",
         "If the app is using synthetic fallback artifacts, say that explicitly before discussing any numbers.",
         "Select one perturbation gene, show predicted vs observed delta, then open the target ranking table.",
-        "Close by emphasizing reproducibility: doctor, snapshot, showcase, CI, and local-first execution.",
     ]
+    if unseen_error_story:
+        live_demo_script.append(
+            f"Open the saved error-analysis highlights and explain that {unseen_error_story}."
+        )
+    live_demo_script.append(
+        "Close by emphasizing reproducibility: doctor, snapshot, showcase, CI, and local-first execution."
+    )
     honest_limitations = [
         "The MVP is intentionally limited to one public dataset: Norman2019.",
         "It only supports single-gene perturbations, not combinatorial perturbations.",
@@ -59,6 +67,10 @@ def build_interview_script(
         "This is a local-first MVP, not a cloud-scale or multi-dataset training platform.",
         "Synthetic showcase artifacts are for offline engineering demos only and should not be presented as biological evidence.",
     ]
+    if unseen_error_story:
+        honest_limitations.append(
+            f"Saved error analysis shows that {unseen_error_story}, so low-signal conditions need extra care when interpreting failures."
+        )
     next_steps = [
         "Evaluate on an additional perturbation dataset once the single-dataset path is fully stable.",
         "Add stronger biologically informed conditioning or gene-feature priors while preserving local runnability.",
@@ -118,6 +130,11 @@ def build_interview_script(
                     f"Results: {best_model} is the best unseen-Pearson baseline at {best_real_unseen}; "
                     f"the Transformer remains competitive at {transformer_unseen} and is strong on DEG recovery "
                     f"with top-100 overlap {transformer_deg100}{transformer_multiseed_suffix}."
+                ),
+                (
+                    f"Failure analysis: {unseen_error_story}."
+                    if unseen_error_story
+                    else "Failure analysis is available through saved per-perturbation diagnostics."
                 ),
                 (
                     "Productization: Streamlit UI, notebooks, CI, type checking, pre-commit hooks, "
@@ -193,6 +210,11 @@ def build_interview_script(
                 (
                     "Evaluation design: separate seen and unseen perturbations, use per-perturbation metrics, "
                     "and add DEG overlap so the output quality is not judged only by MSE."
+                ),
+                (
+                    f"Debuggability: saved error-analysis artifacts show that {unseen_error_story}."
+                    if unseen_error_story
+                    else "Debuggability: saved error-analysis artifacts make the worst perturbations explicit."
                 ),
                 (
                     "Operational polish: CI, lint/typecheck, notebook support, health checks, snapshot export, "
@@ -307,6 +329,23 @@ def _build_multiseed_suffix(num_runs: Any, unseen_text: str, deg100_text: str) -
     return (
         f"; across {num_runs} real Transformer seeds, unseen Pearson = {unseen_text} "
         f"and top-100 DEG overlap = {deg100_text}"
+    )
+
+
+def _build_unseen_error_story(unseen_error: dict[str, Any]) -> str:
+    if not unseen_error:
+        return ""
+    dominant_label = unseen_error.get("dominant_failure_mode_label") or "n/a"
+    dominant_count = unseen_error.get("dominant_failure_mode_count")
+    num_perturbations = unseen_error.get("num_perturbations")
+    count_text = ""
+    if dominant_count is not None and num_perturbations:
+        count_text = f" ({dominant_count}/{num_perturbations})"
+    worst_pearson = unseen_error.get("worst_pearson_perturbation") or "n/a"
+    worst_mse = unseen_error.get("worst_mse_perturbation") or "n/a"
+    return (
+        f"unseen misses are dominated by {dominant_label}{count_text}, "
+        f"with worst Pearson on {worst_pearson} and worst MSE on {worst_mse}"
     )
 
 

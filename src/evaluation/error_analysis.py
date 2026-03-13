@@ -227,6 +227,188 @@ def build_worst_conditions_frame(
         return frame
     return frame.head(top_n).reset_index(drop=True)
 
+def format_failure_mode_label(failure_mode: Any) -> str:
+    """Render a human-readable failure-mode label for CLI/UI summaries."""
+    if failure_mode is None:
+        return "n/a"
+    label = str(failure_mode).replace("_", " ")
+    return label.replace("low signal", "low-signal")
+
+
+def build_error_highlights(error_summary: dict[str, Any]) -> dict[str, Any]:
+    """Extract a compact, display-ready summary from a saved error summary artifact."""
+    failure_mode_frame = build_failure_mode_count_frame(error_summary)
+    worst_pearson_frame = build_worst_conditions_frame(
+        error_summary,
+        rank_by="worst_by_pearson",
+        top_n=1,
+    )
+    worst_mse_frame = build_worst_conditions_frame(
+        error_summary,
+        rank_by="worst_by_mse",
+        top_n=1,
+    )
+
+    dominant_failure_mode = None
+    dominant_failure_mode_count = None
+    if not failure_mode_frame.empty:
+        dominant_failure_mode = failure_mode_frame.iloc[0]["failure_mode"]
+        dominant_failure_mode_count = int(failure_mode_frame.iloc[0]["count"])
+
+    highlights: dict[str, Any] = {
+        "split_name": error_summary.get("split_name"),
+        "num_perturbations": int(error_summary.get("num_perturbations", 0) or 0),
+        "dominant_failure_mode": dominant_failure_mode,
+        "dominant_failure_mode_label": format_failure_mode_label(dominant_failure_mode),
+        "dominant_failure_mode_count": dominant_failure_mode_count,
+    }
+
+    if not worst_pearson_frame.empty:
+        row = worst_pearson_frame.iloc[0]
+        highlights.update(
+            {
+                "worst_pearson_perturbation": row.get("perturbation"),
+                "worst_pearson_value": row.get("pearson"),
+                "worst_pearson_failure_mode": row.get("failure_mode"),
+                "worst_pearson_failure_mode_label": format_failure_mode_label(
+                    row.get("failure_mode")
+                ),
+            }
+        )
+
+    if not worst_mse_frame.empty:
+        row = worst_mse_frame.iloc[0]
+        highlights.update(
+            {
+                "worst_mse_perturbation": row.get("perturbation"),
+                "worst_mse_value": row.get("mse"),
+                "worst_mse_failure_mode": row.get("failure_mode"),
+                "worst_mse_failure_mode_label": format_failure_mode_label(
+                    row.get("failure_mode")
+                ),
+            }
+        )
+
+    return highlights
+
+
+def _find_condition_rank(
+    error_summary: dict[str, Any],
+    *,
+    perturbation_name: str,
+    rank_by: str,
+) -> tuple[int | None, dict[str, Any] | None]:
+    rows = error_summary.get(rank_by, [])
+    if not isinstance(rows, list):
+        return None, None
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            continue
+        if row.get("perturbation") == perturbation_name:
+            return index, row
+    return None, None
+
+
+def build_selected_condition_story(
+    *,
+    perturbation_name: str,
+    diagnostics: dict[str, Any],
+    error_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a concise, display-ready explanation for one perturbation condition."""
+    if not diagnostics:
+        return {}
+
+    error_summary = error_summary or {}
+    failure_mode = diagnostics.get("failure_mode")
+    failure_mode_label = format_failure_mode_label(failure_mode)
+    pearson_rank, _ = _find_condition_rank(
+        error_summary,
+        perturbation_name=perturbation_name,
+        rank_by="worst_by_pearson",
+    )
+    mse_rank, _ = _find_condition_rank(
+        error_summary,
+        perturbation_name=perturbation_name,
+        rank_by="worst_by_mse",
+    )
+
+    if pearson_rank == 1 and mse_rank == 1:
+        status = "error"
+        headline = (
+            f"{perturbation_name} is the hardest saved condition on this split "
+            f"with {failure_mode_label} behavior."
+        )
+    elif pearson_rank == 1:
+        status = "error"
+        headline = (
+            f"{perturbation_name} is the worst saved Pearson case on this split "
+            f"and is currently tagged as {failure_mode_label}."
+        )
+    elif mse_rank == 1:
+        status = "error"
+        headline = (
+            f"{perturbation_name} is the worst saved MSE case on this split "
+            f"and is currently tagged as {failure_mode_label}."
+        )
+    elif pearson_rank is not None or mse_rank is not None:
+        status = "warning"
+        headline = (
+            f"{perturbation_name} is one of the harder saved conditions on this split "
+            f"with {failure_mode_label} behavior."
+        )
+    elif failure_mode in {
+        "directional_mismatch",
+        "high_residual_condition",
+        "underestimates_response_magnitude",
+        "overestimates_response_magnitude",
+        "low_sample_support",
+    }:
+        status = "warning"
+        headline = (
+            f"{perturbation_name} needs attention on this split because it shows "
+            f"{failure_mode_label} behavior."
+        )
+    elif failure_mode == "mostly_aligned":
+        status = "success"
+        headline = f"{perturbation_name} looks mostly aligned on this split."
+    else:
+        status = "info"
+        headline = (
+            f"{perturbation_name} is primarily a {failure_mode_label} condition on this split."
+        )
+
+    details: list[str] = []
+    sample_count = diagnostics.get("sample_count")
+    if sample_count is not None:
+        details.append(f"Saved diagnostics cover {int(sample_count)} matched samples.")
+    pearson = diagnostics.get("pearson")
+    mse = diagnostics.get("mse")
+    if pearson is not None and mse is not None:
+        details.append(
+            f"Saved split metrics: Pearson={float(pearson):.4f}, MSE={float(mse):.4f}."
+        )
+    error_to_signal_ratio = diagnostics.get("error_to_signal_ratio")
+    if error_to_signal_ratio is not None:
+        details.append(
+            f"Error-to-signal ratio is {float(error_to_signal_ratio):.4f}."
+        )
+    if pearson_rank is not None:
+        details.append(f"Ranked #{pearson_rank} in the saved worst-Pearson list.")
+    if mse_rank is not None:
+        details.append(f"Ranked #{mse_rank} in the saved worst-MSE list.")
+    top_residual_genes = diagnostics.get("top_residual_genes")
+    if top_residual_genes:
+        details.append(f"Top residual genes: {top_residual_genes}.")
+
+    return {
+        "status": status,
+        "headline": headline,
+        "details": details,
+        "failure_mode_label": failure_mode_label,
+        "worst_pearson_rank": pearson_rank,
+        "worst_mse_rank": mse_rank,
+    }
 
 def select_perturbation_diagnostics(
     error_table: pd.DataFrame,

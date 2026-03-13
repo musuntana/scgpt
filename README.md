@@ -150,6 +150,7 @@ The snapshot command summarizes:
 - headline real-data results across Transformer / MLP / XGBoost
 - Transformer DEG-overlap highlights
 - Transformer multi-seed stability when `artifacts/multi_seed_report.json` is available
+- Transformer error-analysis highlights when `*_error_summary.json` artifacts are available
 - key demo asset paths
 - recommended commands for a live walkthrough
 
@@ -171,6 +172,7 @@ The showcase command:
 - reuses real Norman2019 artifacts when available
 - regenerates the offline synthetic showcase only when needed
 - writes `artifacts/project_snapshot.json`
+- surfaces a talk track for stability plus failure-case highlights when saved diagnostics exist
 - prints the recommended order for a live walkthrough
 
 Export an interview speaking script:
@@ -194,6 +196,7 @@ The pitch command includes:
 - 30-second project intro
 - 2-minute technical walkthrough
 - real Transformer multi-seed stability when available
+- saved error-analysis / failure-case talking points when available
 - live demo script
 - honest limitations
 - next-step talking points
@@ -250,7 +253,7 @@ Current app behavior:
 - run aggregated inference for that perturbation
 - if `deg_artifact.csv` exists in the artifact directory, combine predicted delta with real DEG significance
 - if `multi_seed_report.json` exists, show Transformer multi-seed stability for the active real/synthetic mode
-- if `*_error_summary.json` and `*_per_perturbation.csv` exist, show split-level failure highlights and selected-perturbation diagnostics
+- if `*_error_summary.json` and `*_per_perturbation.csv` exist, show split-level failure highlights and selected-perturbation condition-level explanations
 - show predicted vs observed delta, top predicted genes, true DEG rows, target ranking, and top-k DEG overlap
 
 Preprocess a dataset bundle:

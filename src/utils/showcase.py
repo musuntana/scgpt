@@ -58,6 +58,22 @@ def format_showcase_report(
             f"top-100 DEG overlap = "
             f"{_format_mean_std(headline.get('transformer_multiseed_unseen_top100_deg_mean'), headline.get('transformer_multiseed_unseen_top100_deg_std'))}"
         )
+    unseen_error = snapshot.get("transformer_error_highlights", {}).get("unseen_test", {})
+    if unseen_error:
+        dominant_label = unseen_error.get("dominant_failure_mode_label") or "n/a"
+        dominant_count = unseen_error.get("dominant_failure_mode_count")
+        num_perturbations = unseen_error.get("num_perturbations")
+        count_suffix = ""
+        if dominant_count is not None and num_perturbations:
+            count_suffix = f" ({dominant_count}/{num_perturbations})"
+        talk_track.append(
+            "Use error analysis to frame limits: unseen misses are dominated by "
+            f"{dominant_label}{count_suffix}; "
+            f"worst Pearson = {unseen_error.get('worst_pearson_perturbation') or 'n/a'} "
+            f"({_format_metric(unseen_error.get('worst_pearson_value'))}), "
+            f"worst MSE = {unseen_error.get('worst_mse_perturbation') or 'n/a'} "
+            f"({_format_metric(unseen_error.get('worst_mse_value'))})"
+        )
     talk_track.extend(
         [
             f"Show real comparison figure: {assets['real_comparison_figure']['path']}",

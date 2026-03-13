@@ -84,6 +84,34 @@ def _create_snapshot_backing_files(root: Path) -> None:
     )
     _write_json(
         root,
+        "artifacts/transformer_seen_norman2019_demo/seen_test_error_summary.json",
+        """
+{
+  "split_name": "seen_test",
+  "model_type": "transformer",
+  "num_perturbations": 105,
+  "failure_mode_counts": {"low_signal_condition": 89},
+  "worst_by_pearson": [{"perturbation": "TSC22D1", "pearson": 0.1466, "failure_mode": "low_signal_condition"}],
+  "worst_by_mse": [{"perturbation": "CEBPE", "mse": 0.0281, "failure_mode": "low_signal_condition"}]
+}
+""".strip(),
+    )
+    _write_json(
+        root,
+        "artifacts/transformer_seen_norman2019_demo/unseen_test_error_summary.json",
+        """
+{
+  "split_name": "unseen_test",
+  "model_type": "transformer",
+  "num_perturbations": 10,
+  "failure_mode_counts": {"low_signal_condition": 10},
+  "worst_by_pearson": [{"perturbation": "MAP2K6", "pearson": 0.5648, "failure_mode": "low_signal_condition"}],
+  "worst_by_mse": [{"perturbation": "FOXO4", "mse": 0.0016, "failure_mode": "low_signal_condition"}]
+}
+""".strip(),
+    )
+    _write_json(
+        root,
         "artifacts/mlp_seen_norman2019_demo/run_summary.json",
         """
 {
@@ -120,6 +148,8 @@ def test_build_interview_script_contains_expected_sections(tmp_path: Path) -> No
     assert len(script["tracks"]["ml-engineering"]["thirty_second_pitch"]) == 4
     assert "XGBoost" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][4]
     assert "0.8304 +/- 0.0067" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][4]
+    assert "MAP2K6" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][5]
+    assert "FOXO4" in script["live_demo_script"][7]
 
 
 def test_build_interview_script_can_select_single_track(tmp_path: Path) -> None:
@@ -146,6 +176,8 @@ def test_format_interview_script_mentions_key_metrics_and_sections(tmp_path: Pat
     assert "0.8405" in report
     assert "0.9755" in report
     assert "0.8304 +/- 0.0067" in report
+    assert "MAP2K6" in report
+    assert "FOXO4" in report
 
 
 def test_write_interview_script_text_creates_file(tmp_path: Path) -> None:

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from src.data.io import read_json, write_json
+from src.evaluation.error_analysis import build_error_highlights
 from src.utils.comparison import scan_artifact_comparison_rows
 from src.utils.project_health import collect_project_health
 
@@ -82,6 +83,17 @@ def _transformer_real_multiseed_summary(project_root: Path) -> dict[str, Any]:
     return {}
 
 
+def _transformer_real_error_highlights(project_root: Path) -> dict[str, dict[str, Any]]:
+    artifact_dir = project_root / "artifacts/transformer_seen_norman2019_demo"
+    highlights: dict[str, dict[str, Any]] = {}
+    for split_name in ("seen_test", "unseen_test"):
+        summary_path = artifact_dir / f"{split_name}_error_summary.json"
+        if not summary_path.exists():
+            continue
+        highlights[split_name] = build_error_highlights(read_json(summary_path))
+    return highlights
+
+
 def build_project_snapshot(project_root: str | Path = ".") -> dict[str, Any]:
     """Build an interview-friendly snapshot of current project status and results."""
     root = Path(project_root).resolve()
@@ -92,6 +104,7 @@ def build_project_snapshot(project_root: str | Path = ".") -> dict[str, Any]:
     best_real = _best_row(real_rows)
     transformer_summary = _transformer_real_summary(root)
     transformer_multiseed = _transformer_real_multiseed_summary(root)
+    transformer_error_highlights = _transformer_real_error_highlights(root)
     transformer_unseen = transformer_summary.get("test_metrics", {}).get("unseen_test", {})
     transformer_seen = transformer_summary.get("test_metrics", {}).get("seen_test", {})
     bundle = transformer_summary.get("artifacts", {}).get("bundle", {})
@@ -165,6 +178,7 @@ def build_project_snapshot(project_root: str | Path = ".") -> dict[str, Any]:
         "headline": headline,
         "real_model_rows": real_rows,
         "synthetic_model_rows": synthetic_rows,
+        "transformer_error_highlights": transformer_error_highlights,
         "assets": assets,
         "commands": commands,
     }
@@ -222,6 +236,16 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
                 f" (seeds={_format_seed_list(headline.get('transformer_multiseed_seeds'))})"
             ),
         )
+
+    error_highlights = snapshot.get("transformer_error_highlights", {})
+    if error_highlights:
+        lines.extend(["", "Transformer error-analysis highlights:"])
+        seen_highlights = error_highlights.get("seen_test")
+        unseen_highlights = error_highlights.get("unseen_test")
+        if seen_highlights:
+            lines.append(_format_error_highlight_line("seen", seen_highlights))
+        if unseen_highlights:
+            lines.append(_format_error_highlight_line("unseen", unseen_highlights))
 
     for mode_name, ok in snapshot["health_modes"].items():
         lines.append(f"  [{'OK' if ok else 'MISSING'}] {mode_name}")
@@ -282,3 +306,20 @@ def _format_seed_list(values: Any) -> str:
     if not isinstance(values, list) or not values:
         return "n/a"
     return ",".join(str(value) for value in values)
+
+
+def _format_error_highlight_line(split_label: str, highlights: dict[str, Any]) -> str:
+    dominant_label = highlights.get("dominant_failure_mode_label") or "n/a"
+    dominant_count = highlights.get("dominant_failure_mode_count")
+    num_perturbations = highlights.get("num_perturbations")
+    dominant_text = dominant_label
+    if dominant_count is not None and num_perturbations:
+        dominant_text += f" ({dominant_count}/{num_perturbations})"
+
+    return (
+        f"  {split_label}: dominant failure mode={dominant_text}, "
+        f"worst Pearson={highlights.get('worst_pearson_perturbation') or 'n/a'} "
+        f"({_format_metric(highlights.get('worst_pearson_value'))}), "
+        f"worst MSE={highlights.get('worst_mse_perturbation') or 'n/a'} "
+        f"({_format_metric(highlights.get('worst_mse_value'))})"
+    )

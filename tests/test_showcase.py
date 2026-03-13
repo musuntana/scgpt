@@ -48,6 +48,17 @@ def test_format_showcase_report_includes_talk_track_and_commands() -> None:
             "transformer_multiseed_unseen_top100_deg_mean": 0.9850,
             "transformer_multiseed_unseen_top100_deg_std": 0.0067,
         },
+        "transformer_error_highlights": {
+            "unseen_test": {
+                "num_perturbations": 10,
+                "dominant_failure_mode_label": "low-signal condition",
+                "dominant_failure_mode_count": 10,
+                "worst_pearson_perturbation": "MAP2K6",
+                "worst_pearson_value": 0.5648,
+                "worst_mse_perturbation": "FOXO4",
+                "worst_mse_value": 0.0016,
+            }
+        },
         "assets": {
             "real_comparison_figure": {
                 "path": "docs/assets/model_comparison_seen_norman2019_demo.png",
@@ -74,5 +85,7 @@ def test_format_showcase_report_includes_talk_track_and_commands() -> None:
     assert "PerturbScope-GPT showcase" in report
     assert "Best unseen Pearson = XGBoost (0.8405)".lower() in report.lower()
     assert "Anchor stability across 3 real Transformer seeds" in report
+    assert "MAP2K6" in report
+    assert "FOXO4" in report
     assert "Streamlit" in report
     assert "./scripts/run_showcase.sh --launch-app" in report

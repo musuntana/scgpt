@@ -51,14 +51,14 @@ def validate_rebuilt_bundle(
             "refusing to export a mismatched GEARS input."
         )
     for name in ("control_expression", "target_delta"):
-        actual = np.asarray(getattr(rebuilt, name))
-        expected = np.asarray(saved[name])
-        if actual.shape != expected.shape or not np.allclose(
-            actual, expected, rtol=rtol, atol=atol, equal_nan=False
+        actual_array = np.asarray(getattr(rebuilt, name))
+        expected_array = np.asarray(saved[name])
+        if actual_array.shape != expected_array.shape or not np.allclose(
+            actual_array, expected_array, rtol=rtol, atol=atol, equal_nan=False
         ):
             max_abs = (
-                float(np.max(np.abs(actual - expected)))
-                if actual.shape == expected.shape and actual.size
+                float(np.max(np.abs(actual_array - expected_array)))
+                if actual_array.shape == expected_array.shape and actual_array.size
                 else None
             )
             raise ValueError(

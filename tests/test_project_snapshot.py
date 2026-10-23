@@ -289,10 +289,15 @@ def test_format_and_write_project_snapshot(tmp_path: Path) -> None:
         "artifacts/transformer_seen_norman2019_demo/run_summary.json",
         _transformer_summary(0.8243, 0.9755),
     )
+    _write_json(
+        tmp_path,
+        "artifacts/transformer_unseen_norman2019_demo/run_summary.json",
+        _transformer_summary(0.8243, 0.9755, train_protocol="unseen"),
+    )
     _write_json(tmp_path, "artifacts/multi_seed_report.json", _multi_seed_report())
     _write_json(
         tmp_path,
-        "artifacts/transformer_seen_norman2019_demo/unseen_test_error_summary.json",
+        "artifacts/transformer_unseen_norman2019_demo/unseen_test_error_summary.json",
         _error_summary(
             "unseen_test",
             num_perturbations=10,

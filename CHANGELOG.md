@@ -6,6 +6,8 @@ All notable changes to PerturbScope-GPT are documented here.
 
 ## [Unreleased]
 
+- Added optional exact-source GEARS AnnData export: replay train-only preprocessing, verify bundle cell/gene/split/target identity, and record source hashes; upstream all-condition DE preprocessing remains blocked for unseen evaluation.
+
 - Added optional exact-source GEARS AnnData export: reruns training-only preprocessing, validates the saved bundle's cells/genes/splits/targets, and records a source hash; upstream all-condition DE preprocessing remains explicitly blocked for unseen evaluation.
 - Added an optional, fail-closed GEARS condition-split preflight exporter with provenance hashes and tests; it does not install GEARS or claim a model benchmark.
 - Added a decision record comparing GEARS, official scGPT perturbation fine-tuning, and the current categorical-ID models; GEARS is the first optional baseline to validate in an isolated environment.

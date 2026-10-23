@@ -43,12 +43,35 @@ def _create_repo_scaffold(root: Path) -> None:
     (root / ".venv").mkdir(parents=True, exist_ok=True)
 
 
-def _transformer_summary(unseen_pearson: float, top100: float) -> dict:
+def _transformer_summary(
+    unseen_pearson: float,
+    top100: float,
+    *,
+    train_protocol: str = "seen",
+) -> dict:
+    test_metrics = (
+        {
+            "seen_test": {
+                "pearson_per_perturbation": 0.60,
+                "mse_per_perturbation": 0.0071,
+            }
+        }
+        if train_protocol == "seen"
+        else {
+            "unseen_test": {
+                "pearson_per_perturbation": unseen_pearson,
+                "mse_per_perturbation": 0.0011,
+                "topk_deg_overlap_20": 0.93,
+                "topk_deg_overlap_100": top100,
+            }
+        }
+    )
     return {
         "dataset": {
             "name": "scperturb_norman2019",
             "cell_context": "K562",
         },
+        "split": {"train_protocol": train_protocol},
         "artifacts": {
             "bundle": {
                 "num_samples": 10500,
@@ -56,56 +79,63 @@ def _transformer_summary(unseen_pearson: float, top100: float) -> dict:
                 "num_perturbations": 105,
             }
         },
-        "test_metrics": {
-            "seen_test": {
-                "pearson_per_perturbation": 0.60,
-                "mse_per_perturbation": 0.0071,
-            },
-            "unseen_test": {
-                "pearson_per_perturbation": unseen_pearson,
-                "mse_per_perturbation": 0.0011,
-                "topk_deg_overlap_20": 0.93,
-                "topk_deg_overlap_100": top100,
-            },
-        },
+        "test_metrics": test_metrics,
     }
 
 
-def _generic_summary(unseen_pearson: float, unseen_mse: float) -> dict:
-    return {
-        "test_metrics": {
+def _generic_summary(
+    unseen_pearson: float,
+    unseen_mse: float,
+    *,
+    train_protocol: str = "seen",
+) -> dict:
+    metrics = (
+        {
             "seen_test": {
                 "pearson_per_perturbation": 0.62,
                 "mse_per_perturbation": 0.0066,
-            },
+            }
+        }
+        if train_protocol == "seen"
+        else {
             "unseen_test": {
                 "pearson_per_perturbation": unseen_pearson,
                 "mse_per_perturbation": unseen_mse,
-            },
+            }
         }
-    }
+    )
+    return {"split": {"train_protocol": train_protocol}, "test_metrics": metrics}
 
 
-def _xgboost_summary(unseen_pearson: float, unseen_mse: float) -> dict:
-    return {
-        "metrics": {
+def _xgboost_summary(
+    unseen_pearson: float,
+    unseen_mse: float,
+    *,
+    train_protocol: str = "seen",
+) -> dict:
+    metrics = (
+        {
             "seen_test": {
                 "pearson_per_perturbation": 0.61,
                 "mse_per_perturbation": 0.0065,
-            },
+            }
+        }
+        if train_protocol == "seen"
+        else {
             "unseen_test": {
                 "pearson_per_perturbation": unseen_pearson,
                 "mse_per_perturbation": unseen_mse,
-            },
+            }
         }
-    }
+    )
+    return {"train_split_prefix": train_protocol, "metrics": metrics}
 
 
 def _multi_seed_report() -> list[dict]:
     return [
         {
             "dataset_name": "scperturb_norman2019",
-            "train_protocol": "seen",
+            "train_protocol": "unseen",
             "model_type": "transformer",
             "num_runs": 3,
             "seeds": [7, 21, 42],

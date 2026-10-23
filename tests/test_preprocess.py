@@ -169,7 +169,7 @@ def test_target_aware_hvg_mask_fails_closed_for_unmappable_or_oversized_panel(
     names, targets, budget, message
 ):
     selected = np.zeros(len(names), dtype=bool)
-    selected[-1] = True
+    selected[-2:] = True
     with pytest.raises(ValueError, match=message):
         extend_hvg_mask_with_target_genes(
             gene_names=names,

@@ -4,6 +4,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import sparse
 
 from src.integrations.gears_export import build_gears_input_adata
 from src.integrations.gears_runtime import (
@@ -90,6 +91,20 @@ def test_train_only_metadata_uses_all_gene_masks_without_de_statistics():
     for gene_indices in adata.uns["non_zeros_gene_idx"].values():
         np.testing.assert_array_equal(gene_indices, np.array([0, 1]))
     assert adata.uns["scgpt_gears_export"]["status"] == "TRAIN_ONLY_RUNTIME_READY"
+
+
+def test_train_only_metadata_checks_sparse_matrix_without_densifying(monkeypatch):
+    adata = _exported()
+    adata.X = sparse.csr_matrix(adata.X)
+
+    def forbidden_toarray(*args, **kwargs):
+        raise AssertionError("sparse expression validation must not densify the matrix")
+
+    monkeypatch.setattr(sparse.csr_matrix, "toarray", forbidden_toarray)
+    report = attach_train_only_loss_metadata(adata)
+
+    assert report["status"] == "TRAIN_ONLY_RUNTIME_READY"
+    assert report["de_statistics_computed"] is False
 
 
 def test_train_only_metadata_rejects_conditions_crossing_partitions():

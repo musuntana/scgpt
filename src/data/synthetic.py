@@ -6,7 +6,11 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from src.data.pairing import ProcessedBundle, create_split_indices
+from src.data.pairing import (
+    ProcessedBundle,
+    _summarize_split_diagnostics,
+    create_split_indices,
+)
 
 
 @dataclass(frozen=True)
@@ -103,6 +107,12 @@ def generate_synthetic_processed_bundle(
         test_fraction=config.test_fraction,
         random_seed=config.random_seed,
     )
+    split_diagnostics = _summarize_split_diagnostics(
+        labels=perturbation_index,
+        splits=splits,
+        val_fraction=config.val_fraction,
+        test_fraction=config.test_fraction,
+    )
     bundle = ProcessedBundle(
         control_expression=control_expression,
         target_delta=target_delta,
@@ -111,6 +121,7 @@ def generate_synthetic_processed_bundle(
         perturbation_names=perturbation_names,
         sample_ids=sample_ids,
         splits=splits,
+        split_diagnostics=split_diagnostics,
     )
     return bundle, perturbation_effects
 

@@ -231,7 +231,7 @@ def test_source_h5ad_reprocessing_exports_exact_gears_input(tmp_path):
             "multi_gene_delimiters": [";", "+", ",", "|", "_"],
         },
         "preprocess": {
-            "min_genes_per_cell": 0,
+            "min_genes_per_cell": 1,
             "min_cells_per_gene": 1,
             "normalize_total_target_sum": 10000,
             "log1p": True,

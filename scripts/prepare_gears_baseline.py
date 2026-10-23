@@ -17,8 +17,8 @@ from src.data.io import load_anndata
 from src.data.pairing import build_training_bundle, load_processed_bundle
 from src.data.preprocess import prepare_adata, select_hvgs_from_training_partitions
 from src.data.schema import enrich_adata_for_preset, resolve_schema
-from src.integrations.gears_contract import build_gears_split_contract, validate_source_identity
 from src.integrations.gears_export import build_gears_input_adata, validate_rebuilt_bundle
+from src.integrations.gears_contract import build_gears_split_contract, validate_source_identity
 from src.utils.config import ensure_keys, load_yaml
 
 

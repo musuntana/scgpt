@@ -10,19 +10,11 @@ import torch
 from torch.utils.data import DataLoader
 
 from src.evaluation.metrics import compute_regression_metrics
+from src.evaluation.protocol import CHECKPOINT_METRIC_DIRECTION
 from src.training.losses import mse_l1_loss
 from src.utils.logger import get_logger
 
 LOGGER = get_logger(__name__)
-
-# Only explicit, direction-aware validation objectives may select checkpoints.
-CHECKPOINT_METRIC_DIRECTION = {
-    "pearson_per_perturbation": "max",
-    "pearson_per_gene": "max",
-    "overall_mse": "min",
-    "mse_per_perturbation": "min",
-}
-
 
 def _resolve_device(requested_device: str) -> torch.device:
     if requested_device != "auto":

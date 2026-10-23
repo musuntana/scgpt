@@ -10,6 +10,7 @@ from src.utils.experiment import (
     _fingerprint_file,
     _git_provenance,
     build_run_summary,
+    summarize_history,
     write_run_summary,
 )
 
@@ -238,3 +239,43 @@ def test_build_run_summary_rejects_mismatched_training_protocol(tmp_path):
             model_config_path="configs/model.yaml",
             train_config_path="configs/train.yaml",
         )
+
+
+@pytest.mark.parametrize(
+    ("metric", "values", "expected_epoch"),
+    [
+        ("overall_mse", [0.4, 0.1, 0.3], 2),
+        ("mse_per_perturbation", [0.4, 0.1, 0.3], 2),
+        ("pearson_per_perturbation", [0.4, 0.1, 0.3], 1),
+        ("pearson_per_gene", [0.4, 0.1, 0.3], 1),
+    ],
+)
+def test_summarize_history_agrees_with_checkpoint_selection_direction(
+    metric, values, expected_epoch
+):
+    history = [
+        {"epoch": i + 1, metric: value}
+        for i, value in enumerate(values)
+    ]
+
+    summary = summarize_history(history, metric)
+
+    assert summary["best_epoch"] == expected_epoch
+    assert summary["history_length"] == 3
+    assert summary["best_validation"] == history[expected_epoch - 1]
+
+
+@pytest.mark.parametrize(
+    ("history", "metric", "error"),
+    [
+        ([{"epoch": 1, "overall_mse": 0.1}], "unknown_metric", "Unsupported checkpoint_metric"),
+        ([{"epoch": 1, "train_loss": 0.1}], "overall_mse", "missing checkpoint metric"),
+        ([{"epoch": 1, "overall_mse": float("nan")}], "overall_mse", "non-finite"),
+        ([{"epoch": 1, "overall_mse": float("inf")}], "overall_mse", "non-finite"),
+    ],
+)
+def test_summarize_history_rejects_missing_or_invalid_selection_data(
+    history, metric, error
+):
+    with pytest.raises(ValueError, match=error):
+        summarize_history(history, metric)

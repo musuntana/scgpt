@@ -6,6 +6,13 @@ from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
 
+CHECKPOINT_METRIC_DIRECTION = {
+    "pearson_per_perturbation": "max",
+    "pearson_per_gene": "max",
+    "overall_mse": "min",
+    "mse_per_perturbation": "min",
+}
+
 BUNDLE_ARTIFACT_NAMES = ("arrays.npz", "splits.npz", "metadata.json")
 
 

@@ -135,3 +135,10 @@ but their bundle identity is **unverified**, and the evaluation CLI issues a
 warning. Do not treat scores produced from unverified legacy artifacts as
 validated cross-run comparisons. Changing to another processed bundle requires
 retraining or retrieving its matching checkpoint.
+
+
+The `run_summary.json` best-epoch audit now uses the same metric direction
+as training checkpoint selection. For MSE it selects the smallest validation
+value; for Pearson it selects the largest. Missing, unsupported, or non-finite
+validation scores are rejected instead of silently reporting an incorrect best
+epoch.

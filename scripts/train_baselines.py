@@ -107,6 +107,18 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, output_dir / "xgboost_model.joblib")
+    with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "schema_version": 1,
+                "train_protocol": args.split_prefix,
+                "checkpoint_selection_split": None,
+                "test_split": test_split_name,
+                "training_seed": int(train_config_payload["train"]["seed"]),
+            },
+            handle,
+            indent=2,
+        )
 
     metrics_by_split: dict[str, dict[str, float]] = {}
     split_name = test_split_name
@@ -173,7 +185,20 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     )
     trainer = Trainer(model=model, config=trainer_config, output_dir=args.output_dir)
     trainer.fit(train_loader, val_loader)
-    checkpoint_path = Path(args.output_dir) / "best_model.pt"
+    output_dir = Path(args.output_dir)
+    with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "schema_version": 1,
+                "train_protocol": args.split_prefix,
+                "checkpoint_selection_split": f"{args.split_prefix}_val",
+                "test_split": test_split_name,
+                "training_seed": int(train_config_payload["train"]["seed"]),
+            },
+            handle,
+            indent=2,
+        )
+    checkpoint_path = output_dir / "best_model.pt"
     trainer.model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
 
     split_name = test_split_name

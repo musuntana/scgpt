@@ -17,3 +17,22 @@ def matching_test_split(split_prefix: str, available_splits: Collection[str]) ->
             "Regenerate the processed bundle or check the selected protocol."
         )
     return test_split
+
+
+
+def validate_split_matches_training_protocol(
+    train_protocol: str | None,
+    split_name: str,
+) -> None:
+    """Reject evaluation splits that conflict with a checkpoint's recorded protocol."""
+    requested_protocol = split_name.split("_", maxsplit=1)[0]
+    if (
+        train_protocol in {"seen", "unseen"}
+        and requested_protocol in {"seen", "unseen"}
+        and requested_protocol != train_protocol
+    ):
+        raise ValueError(
+            f"Checkpoint was trained with the {train_protocol!r} protocol, but "
+            f"{split_name!r} belongs to {requested_protocol!r}. Evaluate the matching "
+            "protocol split or provide a checkpoint trained for that protocol."
+        )

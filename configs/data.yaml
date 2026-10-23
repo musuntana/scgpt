@@ -52,6 +52,7 @@ preprocess:
   log1p: true
   hvg_top_genes: 512
   hvg_upper_bound: 800
+  retain_perturbation_target_genes: false
   sparse_to_dense_after_hvg: true
   dense_dtype: float32
   max_cells_per_perturbation: 500

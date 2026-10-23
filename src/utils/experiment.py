@@ -160,7 +160,8 @@ def _build_provenance(
 
     return {
         "schema_version": 1,
-        "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        # Keep timezone.utc for the declared Python 3.10 compatibility.
+        "created_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),  # noqa: UP017
         "source": {"git": _git_provenance(repo_root)},
         "runtime": _runtime_provenance(),
         "experiment": {

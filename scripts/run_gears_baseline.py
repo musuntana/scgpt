@@ -14,6 +14,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -293,7 +295,7 @@ def run_gears_baseline(
     )
     graph_coverage = validate_gears_graph_coverage(
         bundle_metadata["perturbation_names"],
-        set(str(name) for name in pert_data.pert_names),
+        {str(name) for name in pert_data.pert_names},
     )
     if not graph_coverage["verified"]:
         report = {
@@ -309,7 +311,7 @@ def run_gears_baseline(
             f"{output / 'go_graph_coverage_failure.json'}; no training was started."
         )
 
-    available_conditions = set(str(name) for name in pert_data.dataset_processed)
+    available_conditions = {str(name) for name in pert_data.dataset_processed}
     required_conditions = set(split_json["train"] + split_json["val"] + split_json["test"])
     missing_conditions = sorted(required_conditions - available_conditions)
     if missing_conditions:

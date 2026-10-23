@@ -338,13 +338,15 @@ def _summarize_split_integrity(
             and np.array_equal(np.sort(combined), np.arange(sample_count, dtype=np.int64))
         )
         group_disjoint: bool | None = None
-        if prefix == "unseen" and in_range:
+        if prefix == "unseen" and present and in_range:
             group_sets = {
                 name: set(np.unique(labels[arrays[name]]).tolist())
                 for name in split_names
             }
-            group_disjoint = (
-                group_sets["train"].isdisjoint(group_sets["val"])
+            group_disjoint = bool(
+                pairwise_disjoint
+                and coverage_complete
+                and group_sets["train"].isdisjoint(group_sets["val"])
                 and group_sets["train"].isdisjoint(group_sets["test"])
                 and group_sets["val"].isdisjoint(group_sets["test"])
             )
@@ -433,7 +435,13 @@ def _summarize_split_diagnostics(
     unseen_group_split = {
         "status": (
             "grouped"
-            if unseen_integrity["perturbation_groups_disjoint"]
+            if (
+                unseen_integrity["split_indices_present"]
+                and unseen_integrity["indices_in_range"]
+                and unseen_integrity["pairwise_disjoint"]
+                and unseen_integrity["complete_sample_coverage"]
+                and unseen_integrity["perturbation_groups_disjoint"]
+            )
             else "invalid_or_unavailable"
         ),
         "fallback_reason": None

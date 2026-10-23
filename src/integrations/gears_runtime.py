@@ -150,11 +150,19 @@ def compute_absolute_expression_metrics(
     indices = _as_1d_int_array(bundle["splits"][split_name], split_name)
     control = np.asarray(bundle["control_expression"], dtype=np.float32)
     delta = np.asarray(bundle["target_delta"], dtype=np.float32)
-    if control.shape != delta.shape or control.shape[0] != labels.size:
+    if (
+        control.ndim != 2
+        or control.shape != delta.shape
+        or control.shape[0] != labels.size
+    ):
         raise ValueError("Bundle expression arrays and perturbation indices are inconsistent.")
+    if not np.all(np.isfinite(control)) or not np.all(np.isfinite(delta)):
+        raise ValueError("Bundle control/delta expression arrays contain non-finite values.")
     if np.any(indices < 0) or np.any(indices >= labels.size):
         raise ValueError(f"{split_name} contains out-of-range sample indices.")
     targets = control + delta
+    if not np.all(np.isfinite(targets)):
+        raise ValueError("Absolute-expression targets contain non-finite values.")
 
     per_perturbation: dict[str, dict[str, float | int]] = {}
     for perturbation_index in sorted(set(labels[indices].tolist())):
@@ -162,6 +170,10 @@ def compute_absolute_expression_metrics(
         if perturbation not in predictions:
             raise ValueError(f"Missing GEARS prediction for held-out perturbation {perturbation!r}.")
         predicted = np.asarray(predictions[perturbation], dtype=np.float32).reshape(-1)
+        if not np.all(np.isfinite(predicted)):
+            raise ValueError(
+                f"GEARS prediction for {perturbation!r} contains non-finite values."
+            )
         group_indices = indices[labels[indices] == perturbation_index]
         target = targets[group_indices].mean(axis=0)
         if predicted.shape != target.shape:

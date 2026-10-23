@@ -111,6 +111,73 @@ def test_build_multiseed_report_aggregates_mean_and_std():
     assert "unseen_pearson_mean" not in synthetic_report
 
 
+def _gears_row(seed: int, *, model: str | None = None) -> dict:
+    return {
+        "model": model or f"gears_runs/seed{seed}",
+        "base_model_label": "gears_unseen_same-protocol",
+        "model_type": "gears",
+        "dataset_name": "source-aaaaaaaaaaaa",
+        "train_protocol": "unseen",
+        "seed": seed,
+        "seen_pearson": None,
+        "seen_mse": None,
+        "unseen_pearson": 0.80 + seed / 10000,
+        "unseen_mse": 0.01 + seed / 100000,
+        "seen_top20_deg": None,
+        "seen_top100_deg": None,
+        "unseen_top20_deg": None,
+        "unseen_top100_deg": None,
+        "comparison_protocol_id": "same-protocol",
+        "comparison_eligible": False,
+        "target_equivalence_verified": False,
+        "coexpression_graph_sha256": "7" * 64,
+    }
+
+
+def test_gears_multiseed_report_keeps_scientific_gates_explicit():
+    rows = [_gears_row(seed) for seed in (42, 43, 44)]
+
+    report = build_multiseed_report(rows, min_runs=2)
+
+    assert len(report) == 1
+    row = report[0]
+    assert row["model_type"] == "gears"
+    assert row["num_runs"] == 3
+    assert row["seeds"] == [42, 43, 44]
+    assert row["minimum_seed_gate_passed"] is True
+    assert row["coexpression_graph_consistent"] is True
+    assert row["target_equivalence_verified"] is False
+    assert row["comparison_eligible"] is False
+    assert "real-data target equivalence has not been verified" in row["comparison_blockers"]
+    text_report = format_multiseed_report(report, artifact_root="artifacts")
+    assert "diagnostic-only: comparison_eligible=False" in text_report
+
+
+def test_gears_multiseed_report_requires_three_distinct_seeds():
+    report = build_multiseed_report([_gears_row(42), _gears_row(43)], min_runs=2)
+
+    assert len(report) == 1
+    assert report[0]["minimum_seed_gate_passed"] is False
+    assert report[0]["comparison_eligible"] is False
+    assert "at least three distinct random seeds are required" in report[0]["comparison_blockers"]
+
+
+def test_gears_multiseed_report_does_not_double_count_duplicate_seeds():
+    rows = [
+        _gears_row(42, model="gears_runs/a_seed42"),
+        _gears_row(42, model="gears_runs/b_seed42"),
+        _gears_row(43),
+    ]
+
+    report = build_multiseed_report(rows, min_runs=2)
+
+    assert len(report) == 1
+    assert report[0]["num_runs"] == 2
+    assert report[0]["seeds"] == [42, 43]
+    assert report[0]["duplicate_seed_runs_ignored"] == 1
+    assert report[0]["duplicate_seeds"] == [42]
+
+
 def test_format_multiseed_report_handles_empty_groups():
     report = format_multiseed_report([], artifact_root="artifacts")
     assert "No groups with repeated runs were found." in report

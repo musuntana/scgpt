@@ -162,20 +162,52 @@ def test_gears_multiseed_report_requires_three_distinct_seeds():
     assert "at least three distinct random seeds are required" in report[0]["comparison_blockers"]
 
 
-def test_gears_multiseed_report_does_not_double_count_duplicate_seeds():
+def test_gears_multiseed_report_blocks_comparison_with_duplicate_seeds():
     rows = [
         _gears_row(42, model="gears_runs/a_seed42"),
         _gears_row(42, model="gears_runs/b_seed42"),
         _gears_row(43),
+        _gears_row(44),
     ]
+    for row in rows:
+        row["comparison_eligible"] = True
+        row["target_equivalence_verified"] = True
 
     report = build_multiseed_report(rows, min_runs=2)
 
     assert len(report) == 1
-    assert report[0]["num_runs"] == 2
-    assert report[0]["seeds"] == [42, 43]
-    assert report[0]["duplicate_seed_runs_ignored"] == 1
-    assert report[0]["duplicate_seeds"] == [42]
+    row = report[0]
+    assert row["num_runs"] == 3
+    assert row["seeds"] == [42, 43, 44]
+    assert row["duplicate_seed_runs_ignored"] == 1
+    assert row["duplicate_seeds"] == [42]
+    assert row["duplicate_seed_artifacts_ignored"] == ["gears_runs/b_seed42"]
+    assert row["duplicate_seed_gate_passed"] is False
+    assert row["minimum_seed_gate_passed"] is True
+    assert row["comparison_eligible"] is False
+    assert "duplicate-seed artifacts detected; resolve duplicates before comparison" in row["comparison_blockers"]
+
+
+def test_gears_multiseed_report_includes_duplicate_artifact_graph_hashes():
+    rows = [
+        _gears_row(42, model="gears_runs/a_seed42"),
+        _gears_row(42, model="gears_runs/b_seed42"),
+        _gears_row(43),
+        _gears_row(44),
+    ]
+    for row in rows:
+        row["comparison_eligible"] = True
+        row["target_equivalence_verified"] = True
+    rows[1]["coexpression_graph_sha256"] = "8" * 64
+
+    report = build_multiseed_report(rows, min_runs=2)
+
+    assert len(report) == 1
+    row = report[0]
+    assert row["coexpression_graph_hashes"] == sorted(["7" * 64, "8" * 64])
+    assert row["coexpression_graph_consistent"] is False
+    assert row["comparison_eligible"] is False
+    assert "co-expression graph hash is missing or differs across runs" in row["comparison_blockers"]
 
 
 def test_format_multiseed_report_handles_empty_groups():

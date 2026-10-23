@@ -81,7 +81,7 @@ def build_control_mean_lookup(
 
 def _can_stratify(labels: np.ndarray) -> bool:
     _, counts = np.unique(labels, return_counts=True)
-    return counts.min(initial=0) >= 2
+    return counts.size > 0 and int(counts.min()) >= 2
 
 
 def _three_way_stratified_split(

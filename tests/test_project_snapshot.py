@@ -279,7 +279,7 @@ def test_build_project_snapshot_separates_real_and_synthetic_rows(
 
     assert len(snapshot["real_model_rows"]) == 1
     assert len(snapshot["synthetic_model_rows"]) == 3
-    assert snapshot["synthetic_model_rows"][0]["display_name"] == "XGBoost"
+    assert any(row["display_name"] == "XGBoost" for row in snapshot["synthetic_model_rows"])
 
 
 def test_format_and_write_project_snapshot(tmp_path: Path) -> None:

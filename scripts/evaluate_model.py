@@ -23,6 +23,7 @@ from src.evaluation.inference import load_torch_model_for_bundle
 from src.evaluation.metrics import compute_regression_metrics, compute_topk_deg_metrics
 from src.evaluation.protocol import (
     validate_checkpoint_bundle_identity,
+    validate_checkpoint_model_identity,
     validate_split_matches_training_protocol,
 )
 from src.training.trainer import Trainer, TrainerConfig
@@ -98,6 +99,15 @@ def main() -> None:
         if not validate_checkpoint_bundle_identity(protocol, args.bundle_dir):
             LOGGER.warning(
                 "Legacy checkpoint lacks bundle hashes; dataset identity is UNVERIFIED."
+            )
+        if not validate_checkpoint_model_identity(
+            protocol,
+            model_type=args.model_type,
+            model_config_path=args.model_config,
+        ):
+            LOGGER.warning(
+                "Legacy checkpoint lacks model identity or configuration hashes; "
+                "model identity is UNVERIFIED."
             )
     elif run_summary_path.exists():
         run_summary = read_json(run_summary_path)

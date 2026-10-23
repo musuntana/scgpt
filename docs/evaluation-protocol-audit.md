@@ -142,3 +142,18 @@ as training checkpoint selection. For MSE it selects the smallest validation
 value; for Pearson it selects the largest. Missing, unsupported, or non-finite
 validation scores are rejected instead of silently reporting an incorrect best
 epoch.
+
+
+## Model-configuration identity and UI access
+
+New Transformer runs record a schema-3 training protocol including the selected
+model type and the SHA-256 of the exact model YAML used at training time. The
+evaluation CLI and Streamlit inference loader reject model-type mismatches and
+changed configuration files **before** loading the weights, even when dropout
+or other settings can change without altering parameter shapes.
+
+MLP/XGBoost training protocols now record their model type as well; their
+constructors do not read Transformer YAML. Historical protocols without enough
+model configuration provenance remain readable but are **unverified** and
+must not support claims of protocol-matched performance. The Streamlit model
+selector also exposes the existing `transformer_shared_gene_identity` model.

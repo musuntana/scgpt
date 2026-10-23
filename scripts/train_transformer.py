@@ -14,7 +14,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.data.pairing import load_processed_bundle
 from src.data.torch_dataset import ProcessedDataset
-from src.evaluation.protocol import fingerprint_processed_bundle, matching_test_split
+from src.evaluation.protocol import (
+    fingerprint_model_config,
+    fingerprint_processed_bundle,
+    matching_test_split,
+)
 from src.models.shared_gene_transformer import SharedGeneIdentityTransformer
 from src.models.transformer import TransformerPerturbationModel
 from src.training.trainer import Trainer, TrainerConfig
@@ -62,6 +66,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     model_config = load_yaml(args.model_config)
+    model_config_sha256 = fingerprint_model_config(args.model_config)
     train_config_payload = load_yaml(args.train_config)
     if args.seed is not None:
         train_config_payload.setdefault("train", {})["seed"] = int(args.seed)
@@ -125,8 +130,9 @@ def main() -> None:
     with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
         json.dump(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "bundle_artifacts_sha256": bundle_artifacts_sha256,
+                "model_config_sha256": model_config_sha256,
                 "train_protocol": args.split_prefix,
                 "checkpoint_selection_split": f"{args.split_prefix}_val",
                 "test_split": test_split_name,

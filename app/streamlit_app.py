@@ -324,7 +324,11 @@ artifact_dir = Path(
         value=DEFAULT_ARTIFACT_DIR,
     )
 )
-model_type = st.sidebar.selectbox("Torch model type", options=["transformer", "mlp"], index=0)
+model_type = st.sidebar.selectbox(
+    "Torch model type",
+    options=["transformer", "transformer_shared_gene_identity", "mlp"],
+    index=0,
+)
 model_config_path = Path(
     st.sidebar.text_input(
         "Model config path",

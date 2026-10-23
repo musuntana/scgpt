@@ -32,6 +32,63 @@ def fingerprint_processed_bundle(bundle_dir: str | Path) -> dict[str, str]:
     return digests
 
 
+def fingerprint_model_config(model_config_path: str | Path) -> str:
+    """Hash the exact model-configuration file used to construct a checkpoint."""
+    path = Path(model_config_path)
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def validate_checkpoint_model_identity(
+    protocol: Mapping[str, Any],
+    *,
+    model_type: str,
+    model_config_path: str | Path,
+) -> bool:
+    """Reject model/config drift for verified checkpoints.
+
+    False means the historical record lacks enough provenance to verify the
+    requested architecture and configuration; it is not a positive verification.
+    """
+    schema_version = protocol.get("schema_version", 1)
+    recorded_model_type = protocol.get("model_type")
+    if not isinstance(recorded_model_type, str) or not recorded_model_type:
+        if schema_version >= 3:
+            raise ValueError("Checkpoint protocol is missing required model_type.")
+        return False
+    if recorded_model_type != model_type:
+        raise ValueError(
+            f"Checkpoint model_type mismatch: trained as {recorded_model_type!r}, "
+            f"requested {model_type!r}."
+        )
+
+    if model_type not in {"transformer", "transformer_shared_gene_identity"}:
+        return True
+
+    expected_hash = protocol.get("model_config_sha256")
+    if expected_hash is None:
+        if schema_version >= 3:
+            raise ValueError(
+                "Checkpoint protocol is missing required model_config_sha256."
+            )
+        return False
+    if (
+        not isinstance(expected_hash, str)
+        or re.fullmatch(r"[0-9a-f]{64}", expected_hash) is None
+    ):
+        raise ValueError("Checkpoint model_config_sha256 is not a valid SHA-256 hash.")
+    actual_hash = fingerprint_model_config(model_config_path)
+    if actual_hash != expected_hash:
+        raise ValueError(
+            "Checkpoint model configuration identity mismatch: the selected "
+            "model config differs from the one used to train the checkpoint."
+        )
+    return True
+
+
 def validate_checkpoint_bundle_identity(
     protocol: Mapping[str, Any],
     bundle_dir: str | Path,

@@ -145,3 +145,38 @@ def test_checkpoint_loading_requires_matching_bundle_before_model_init(tmp_path)
             model_config_path="configs/model.yaml", model_type="transformer",
             bundle_dir=bundle_path,
         )
+
+
+def test_new_checkpoint_rejects_model_config_drift_before_loading_weights(tmp_path):
+    from src.evaluation.protocol import fingerprint_model_config, fingerprint_processed_bundle
+
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    for name in ("arrays.npz", "splits.npz", "metadata.json"):
+        (bundle_dir / name).write_bytes(name.encode("utf-8"))
+    config_path = tmp_path / "model.yaml"
+    config_path.write_text("dropout: 0.1\n", encoding="utf-8")
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    protocol = {
+        "schema_version": 3,
+        "bundle_artifacts_sha256": fingerprint_processed_bundle(bundle_dir),
+        "model_type": "transformer",
+        "model_config_sha256": fingerprint_model_config(config_path),
+    }
+    (run_dir / "training_protocol.json").write_text(json.dumps(protocol), encoding="utf-8")
+    config_path.write_text("dropout: 0.2\n", encoding="utf-8")
+    bundle = {
+        "control_expression": np.ones((1, 2), dtype=np.float32),
+        "metadata": {"gene_names": ["g1", "g2"], "perturbation_names": ["p1"]},
+    }
+
+    with pytest.raises(ValueError, match="model configuration identity mismatch"):
+        load_torch_model_for_bundle(
+            bundle=bundle,
+            checkpoint_path=run_dir / "best_model.pt",
+            model_config_path=config_path,
+            model_type="transformer",
+            bundle_dir=bundle_dir,
+        )

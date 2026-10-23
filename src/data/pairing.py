@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,7 @@ class ProcessedBundle:
     perturbation_names: list[str]
     sample_ids: list[str]
     splits: dict[str, np.ndarray]
+    split_diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 def _row_to_dense(matrix, row_index: int) -> np.ndarray:
@@ -299,6 +300,151 @@ def create_split_indices(
     return {**seen, **unseen}
 
 
+def _summarize_split_integrity(
+    labels: np.ndarray,
+    splits: dict[str, np.ndarray],
+) -> dict[str, Any]:
+    """Summarize sample coverage and perturbation-group separation."""
+    labels = np.asarray(labels)
+    sample_count = int(len(labels))
+    split_names = ("train", "val", "test")
+    sample_counts: dict[str, int] = {}
+    perturbation_group_counts: dict[str, int | None] = {}
+    integrity: dict[str, dict[str, Any]] = {}
+
+    for prefix in ("seen", "unseen"):
+        arrays: dict[str, np.ndarray] = {}
+        present = True
+        for split_name in split_names:
+            key = f"{prefix}_{split_name}"
+            if key not in splits:
+                present = False
+                indices = np.array([], dtype=np.int64)
+            else:
+                indices = np.asarray(splits[key], dtype=np.int64).reshape(-1)
+            arrays[split_name] = indices
+            sample_counts[key] = int(len(indices))
+
+            in_range = bool(np.all((indices >= 0) & (indices < sample_count)))
+            perturbation_group_counts[key] = (
+                int(len(np.unique(labels[indices]))) if in_range else None
+            )
+
+        combined = np.concatenate([arrays[name] for name in split_names])
+        in_range = bool(np.all((combined >= 0) & (combined < sample_count)))
+        pairwise_disjoint = bool(len(np.unique(combined)) == len(combined))
+        coverage_complete = bool(
+            in_range
+            and np.array_equal(np.sort(combined), np.arange(sample_count, dtype=np.int64))
+        )
+        group_disjoint: bool | None = None
+        if prefix == "unseen" and in_range:
+            group_sets = {
+                name: set(np.unique(labels[arrays[name]]).tolist())
+                for name in split_names
+            }
+            group_disjoint = (
+                group_sets["train"].isdisjoint(group_sets["val"])
+                and group_sets["train"].isdisjoint(group_sets["test"])
+                and group_sets["val"].isdisjoint(group_sets["test"])
+            )
+        integrity[prefix] = {
+            "split_indices_present": present,
+            "indices_in_range": in_range,
+            "pairwise_disjoint": pairwise_disjoint,
+            "complete_sample_coverage": coverage_complete,
+            "perturbation_groups_disjoint": group_disjoint,
+        }
+
+    return {
+        "schema_version": 1,
+        "sample_count": sample_count,
+        "sample_counts": sample_counts,
+        "perturbation_group_counts": perturbation_group_counts,
+        "integrity": integrity,
+    }
+
+
+def _summarize_split_diagnostics(
+    labels: np.ndarray,
+    splits: dict[str, np.ndarray],
+    val_fraction: float,
+    test_fraction: float,
+) -> dict[str, Any]:
+    """Persist split integrity plus the reason stratification was or was not used."""
+    diagnostics = _summarize_split_integrity(labels, splits)
+    seen_train = np.asarray(splits["seen_train"], dtype=np.int64)
+    seen_val = np.asarray(splits["seen_val"], dtype=np.int64)
+    seen_test = np.asarray(splits["seen_test"], dtype=np.int64)
+    labels = np.asarray(labels)
+
+    if val_fraction == 0.0 and test_fraction == 0.0:
+        stratification = {
+            "status": "not_requested",
+            "fallback_stage": None,
+            "fallback_reason": None,
+        }
+    elif not diagnostics["integrity"]["seen"]["indices_in_range"]:
+        stratification = {
+            "status": "unavailable",
+            "fallback_stage": None,
+            "fallback_reason": "split indices are out of range",
+        }
+    elif val_fraction == 0.0 or test_fraction == 0.0:
+        heldout = seen_test if test_fraction > 0.0 else seen_val
+        reason = _stratification_fallback_reason(
+            labels,
+            train_size=len(seen_train),
+            test_size=len(heldout),
+        )
+        stratification = {
+            "status": "stratified" if reason is None else "unstratified_fallback",
+            "fallback_stage": "single_stage" if reason is not None else None,
+            "fallback_reason": reason,
+        }
+    else:
+        temp_indices = np.concatenate([seen_val, seen_test])
+        first_reason = _stratification_fallback_reason(
+            labels,
+            train_size=len(seen_train),
+            test_size=len(temp_indices),
+        )
+        if first_reason is not None:
+            stratification = {
+                "status": "unstratified_fallback",
+                "fallback_stage": "train_vs_holdout",
+                "fallback_reason": first_reason,
+            }
+        else:
+            second_reason = _stratification_fallback_reason(
+                labels[temp_indices],
+                train_size=len(seen_val),
+                test_size=len(seen_test),
+            )
+            stratification = {
+                "status": (
+                    "stratified" if second_reason is None else "partially_stratified_fallback"
+                ),
+                "fallback_stage": "validation_vs_test" if second_reason is not None else None,
+                "fallback_reason": second_reason,
+            }
+
+    unseen_integrity = diagnostics["integrity"]["unseen"]
+    unseen_group_split = {
+        "status": (
+            "grouped"
+            if unseen_integrity["perturbation_groups_disjoint"]
+            else "invalid_or_unavailable"
+        ),
+        "fallback_reason": None
+        if unseen_integrity["perturbation_groups_disjoint"]
+        else "perturbation groups overlap or indices are out of range",
+    }
+    diagnostics["seen_stratification"] = stratification
+    diagnostics["unseen_group_split"] = unseen_group_split
+    return diagnostics
+
+
 def build_training_bundle(
     adata,
     perturbation_col: str,
@@ -357,6 +503,12 @@ def build_training_bundle(
         test_fraction=test_fraction,
         random_seed=random_seed,
     )
+    split_diagnostics = _summarize_split_diagnostics(
+        labels=perturbation_index,
+        splits=splits,
+        val_fraction=val_fraction,
+        test_fraction=test_fraction,
+    )
     LOGGER.info(
         "Built processed bundle with %s samples, %s genes, and %s perturbations.",
         len(sample_ids),
@@ -371,6 +523,7 @@ def build_training_bundle(
         perturbation_names=perturbation_names,
         sample_ids=sample_ids,
         splits=splits,
+        split_diagnostics=split_diagnostics,
     )
 
 
@@ -392,6 +545,15 @@ def save_processed_bundle(bundle: ProcessedBundle, output_dir: str | Path) -> No
         {
             "gene_names": bundle.gene_names,
             "perturbation_names": bundle.perturbation_names,
+            "split_diagnostics": bundle.split_diagnostics
+            or {
+                "schema_version": 1,
+                "status": "not_recorded",
+                **_summarize_split_integrity(
+                    bundle.perturbation_index,
+                    bundle.splits,
+                ),
+            },
         },
     )
 

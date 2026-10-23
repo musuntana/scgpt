@@ -186,6 +186,7 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     trainer = Trainer(model=model, config=trainer_config, output_dir=args.output_dir)
     trainer.fit(train_loader, val_loader)
     output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
         json.dump(
             {

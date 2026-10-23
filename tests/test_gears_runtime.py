@@ -168,6 +168,34 @@ def test_absolute_expression_metrics_reject_non_finite_bundle_arrays():
         )
 
 
+@pytest.mark.parametrize("invalid_index", [-1, 4])
+def test_absolute_expression_metrics_reject_out_of_range_perturbation_indices(
+    invalid_index: int,
+) -> None:
+    bundle = _bundle()
+    bundle["perturbation_index"][6] = invalid_index
+
+    with pytest.raises(ValueError, match="outside perturbation_names range"):
+        compute_absolute_expression_metrics({"D": np.ones(2, dtype=np.float32)}, bundle)
+
+
+def test_absolute_expression_metrics_reject_duplicate_split_indices() -> None:
+    bundle = _bundle()
+    bundle["splits"]["unseen_test"] = np.array([6, 6], dtype=np.int64)
+
+    with pytest.raises(ValueError, match="duplicate sample indices"):
+        compute_absolute_expression_metrics({"D": np.ones(2, dtype=np.float32)}, bundle)
+
+
+def test_absolute_expression_metrics_reject_empty_gene_universe() -> None:
+    bundle = _bundle()
+    bundle["control_expression"] = np.empty((8, 0), dtype=np.float32)
+    bundle["target_delta"] = np.empty((8, 0), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="at least one gene"):
+        compute_absolute_expression_metrics({"D": np.empty(0, dtype=np.float32)}, bundle)
+
+
 def test_absolute_expression_metrics_fail_if_prediction_is_missing():
     with pytest.raises(ValueError, match="Missing GEARS prediction"):
         compute_absolute_expression_metrics(

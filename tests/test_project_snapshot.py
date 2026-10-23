@@ -242,7 +242,7 @@ def test_build_project_snapshot_selects_best_real_model_and_deg_story(
     assert snapshot["headline"]["best_real_unseen_model"] == "XGBoost"
     assert snapshot["headline"]["best_real_unseen_pearson"] == 0.8405
     assert snapshot["headline"]["transformer_unseen_top100_deg_overlap"] == 0.9755
-    assert snapshot["headline"]["transformer_multiseed_num_runs"] == 3
+    assert snapshot["headline"]["transformer_multiseed_unseen_num_runs"] == 3
     assert snapshot["headline"]["transformer_multiseed_unseen_pearson_mean"] == 0.8304
     assert snapshot["headline"]["all_real_models_unseen_pearson_ge_0_82"] is True
     assert (
@@ -319,7 +319,7 @@ def test_format_and_write_project_snapshot(tmp_path: Path) -> None:
 
     assert "PerturbScope-GPT snapshot" in report
     assert "Best real unseen Pearson" in report
-    assert "Transformer multi-seed unseen Pearson / top-100 DEG overlap" in report
+    assert "Transformer multi-seed unseen diagnostic Pearson / top-100 DEG overlap" in report
     assert "Transformer error-analysis highlights" in report
     assert "MAP2K6" in report
     assert "FOXO4" in report

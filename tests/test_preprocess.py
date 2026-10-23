@@ -51,6 +51,8 @@ def test_hvg_selection_excludes_heldout_perturbation_samples(monkeypatch):
         lambda: SimpleNamespace(
             pp=SimpleNamespace(
                 filter_genes=fake_filter_genes,
+                normalize_total=lambda fit_adata, target_sum: None,
+                log1p=lambda fit_adata: None,
                 highly_variable_genes=fake_highly_variable_genes,
             )
         ),

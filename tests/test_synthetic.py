@@ -4,12 +4,12 @@ import json
 
 import numpy as np
 
+from src.data.pairing import save_processed_bundle
 from src.data.synthetic import (
     SyntheticDemoConfig,
     build_synthetic_deg_artifact,
     generate_synthetic_processed_bundle,
 )
-from src.data.pairing import save_processed_bundle
 
 
 def test_generate_synthetic_processed_bundle_returns_expected_shapes(tmp_path):

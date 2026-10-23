@@ -245,6 +245,7 @@ def compute_control_relative_delta_metrics(
         raise ValueError("GEARS control reference contains non-finite values.")
 
     per_perturbation: dict[str, dict[str, float | int]] = {}
+    matched_control_mean_hashes: dict[str, str] = {}
     for perturbation_index in sorted(set(labels[indices].tolist())):
         perturbation = names[int(perturbation_index)]
         if perturbation not in predictions:
@@ -290,6 +291,7 @@ def compute_control_relative_delta_metrics(
             np.mean([row["pearson_delta_expression"] for row in per_perturbation.values()])
         ),
         "per_perturbation": per_perturbation,
+        "matched_control_mean_sha256": matched_control_mean_hashes,
         "comparison_eligible": False,
         "interpretation": (
             "Target-aligned diagnostic metrics; multi-seed and real-data review are "

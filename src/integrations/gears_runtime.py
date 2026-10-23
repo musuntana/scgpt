@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -131,6 +133,168 @@ def validate_gears_graph_coverage(
         "required_perturbation_count": len(required),
         "available_perturbation_count": len(available),
         "missing_perturbations": missing,
+    }
+
+
+def validate_gears_gene_order(
+    bundle_gene_ids: list[str],
+    input_gene_ids: list[str],
+    input_gene_symbols: list[str],
+    gears_gene_symbols: list[str] | None = None,
+) -> dict[str, Any]:
+    """Verify the ordered gene identity contract used by GEARS and the bundle."""
+    def normalize(values: list[str], label: str) -> list[str]:
+        normalized = [str(value).strip() for value in values]
+        if not normalized:
+            raise ValueError(f"{label} must not be empty.")
+        if any(value.lower() in {"", "nan", "none"} for value in normalized):
+            raise ValueError(f"{label} contains an empty or invalid gene identifier.")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError(f"{label} must contain unique values.")
+        return normalized
+
+    bundle_ids = normalize(bundle_gene_ids, "Bundle gene IDs")
+    input_ids = normalize(input_gene_ids, "GEARS input gene IDs")
+    input_symbols = normalize(input_gene_symbols, "GEARS input gene symbols")
+    if bundle_ids != input_ids:
+        raise ValueError("GEARS input gene ID order differs from the processed bundle.")
+    if len(input_symbols) != len(bundle_ids):
+        raise ValueError("GEARS gene-symbol count differs from the processed bundle.")
+
+    gears_symbols: list[str] | None = None
+    if gears_gene_symbols is not None:
+        gears_symbols = normalize(gears_gene_symbols, "GEARS runtime gene symbols")
+        if gears_symbols != input_symbols:
+            raise ValueError(
+                "GEARS runtime gene-symbol order differs from the input AnnData."
+            )
+
+    def digest(values: list[str]) -> str:
+        payload = json.dumps(values, ensure_ascii=False, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    return {
+        "verified": gears_symbols is not None,
+        "bundle_input_gene_order_verified": True,
+        "gears_symbol_order_verified": gears_symbols is not None,
+        "gene_count": len(bundle_ids),
+        "bundle_gene_ids_sha256": digest(bundle_ids),
+        "input_gene_symbols_sha256": digest(input_symbols),
+        "gears_gene_symbols_sha256": (
+            digest(gears_symbols) if gears_symbols is not None else None
+        ),
+    }
+
+
+def compute_control_relative_delta_metrics(
+    predictions: Mapping[str, np.ndarray],
+    bundle: Mapping[str, Any],
+    *,
+    control_reference_mean: np.ndarray,
+    split_name: str = "unseen_test",
+) -> dict[str, Any]:
+    """Convert GEARS absolute predictions to the bundle's control-relative delta space.
+
+    GEARS predicts expression by applying the perturbation to its control cells.
+    Subtracting the mean expression of those exact control cells yields a
+    perturbation delta. Targets are the bundle's matched-control deltas, averaged
+    over each held-out perturbation group. Only per-perturbation MSE and Pearson
+    are marked comparable to the repository's corresponding aggregated metrics.
+    """
+    splits = bundle.get("splits")
+    if not isinstance(splits, Mapping) or split_name not in splits:
+        raise ValueError(f"Processed bundle has no split {split_name!r}.")
+    metadata = bundle.get("metadata")
+    if not isinstance(metadata, Mapping):
+        raise ValueError("Processed bundle metadata is missing.")
+    names = metadata.get("perturbation_names")
+    if not isinstance(names, list) or not names:
+        raise ValueError("Bundle perturbation_names metadata is missing.")
+
+    labels = _as_1d_int_array(bundle.get("perturbation_index"), "perturbation_index")
+    if labels.size == 0 or np.any(labels < 0) or np.any(labels >= len(names)):
+        raise ValueError(
+            "Perturbation indices are empty or outside perturbation_names range."
+        )
+    indices = _as_1d_int_array(splits[split_name], split_name)
+    if indices.size == 0:
+        raise ValueError(f"{split_name} has no samples to evaluate.")
+    if np.unique(indices).size != indices.size:
+        raise ValueError(f"{split_name} contains duplicate sample indices.")
+    if np.any(indices < 0) or np.any(indices >= labels.size):
+        raise ValueError(f"{split_name} contains out-of-range sample indices.")
+
+    if bundle.get("target_delta") is None:
+        raise ValueError("Bundle target_delta array is missing.")
+    target_delta = np.asarray(bundle["target_delta"], dtype=np.float64)
+    if (
+        target_delta.ndim != 2
+        or target_delta.shape[0] != labels.size
+        or target_delta.shape[1] < 1
+    ):
+        raise ValueError("Bundle target_delta shape is inconsistent or has no genes.")
+    if not np.all(np.isfinite(target_delta)):
+        raise ValueError("Bundle target_delta contains non-finite values.")
+
+    baseline = np.asarray(control_reference_mean, dtype=np.float64)
+    if baseline.ndim != 1 or baseline.shape != (target_delta.shape[1],):
+        raise ValueError(
+            "GEARS control reference must be a one-dimensional vector in bundle gene order."
+        )
+    if not np.all(np.isfinite(baseline)):
+        raise ValueError("GEARS control reference contains non-finite values.")
+
+    per_perturbation: dict[str, dict[str, float | int]] = {}
+    for perturbation_index in sorted(set(labels[indices].tolist())):
+        perturbation = names[int(perturbation_index)]
+        if perturbation not in predictions:
+            raise ValueError(
+                f"Missing GEARS prediction for held-out perturbation {perturbation!r}."
+            )
+        predicted_absolute = np.asarray(predictions[perturbation], dtype=np.float64)
+        if predicted_absolute.ndim != 1 or predicted_absolute.shape != baseline.shape:
+            raise ValueError(
+                f"Prediction for {perturbation!r} must be a one-dimensional vector "
+                f"with {baseline.size} genes; got shape {predicted_absolute.shape}."
+            )
+        if not np.all(np.isfinite(predicted_absolute)):
+            raise ValueError(
+                f"Prediction for {perturbation!r} contains non-finite values."
+            )
+
+        group_indices = indices[labels[indices] == perturbation_index]
+        predicted_delta = predicted_absolute - baseline
+        target = target_delta[group_indices].mean(axis=0, dtype=np.float64)
+        per_perturbation[perturbation] = {
+            "sample_count": int(group_indices.size),
+            "mse_delta_expression": mean_squared_error(predicted_delta, target),
+            "pearson_delta_expression": pearson_correlation(predicted_delta, target),
+        }
+
+    if not per_perturbation:
+        raise ValueError(f"{split_name} has no perturbations to evaluate.")
+    return {
+        "split": split_name,
+        "metric_space": "control_relative_delta_expression",
+        "prediction_conversion": "absolute_prediction_minus_gears_control_mean",
+        "target_source": "bundle.target_delta",
+        "target_aggregation": "mean_by_perturbation_over_selected_split",
+        "directly_comparable_to_repository_delta_metrics": True,
+        "comparable_metric_keys": ["mse_per_perturbation", "pearson_per_perturbation"],
+        "non_comparable_metric_keys": ["overall_mse", "pearson_per_gene"],
+        "perturbation_count": len(per_perturbation),
+        "mse_per_perturbation": float(
+            np.mean([row["mse_delta_expression"] for row in per_perturbation.values()])
+        ),
+        "pearson_per_perturbation": float(
+            np.mean([row["pearson_delta_expression"] for row in per_perturbation.values()])
+        ),
+        "per_perturbation": per_perturbation,
+        "comparison_eligible": False,
+        "interpretation": (
+            "Target-aligned diagnostic metrics; multi-seed and real-data review are "
+            "still required before a model-performance claim."
+        ),
     }
 
 

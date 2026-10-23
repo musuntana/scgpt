@@ -9,8 +9,8 @@ from src.evaluation.protocol import (
     fingerprint_model_config,
     fingerprint_processed_bundle,
     matching_test_split,
-    validate_checkpoint_model_identity,
     validate_checkpoint_bundle_identity,
+    validate_checkpoint_model_identity,
     validate_split_matches_training_protocol,
 )
 
@@ -124,7 +124,7 @@ def test_checkpoint_bundle_identity_marks_legacy_unverified(tmp_path):
 
 def test_checkpoint_model_config_identity_roundtrip(tmp_path):
     config = tmp_path / "model.yaml"
-    config.write_text("transformer:\\n  dropout: 0.1\\n", encoding="utf-8")
+    config.write_text("transformer:\n  dropout: 0.1\n", encoding="utf-8")
     protocol = {
         "schema_version": 3,
         "model_type": "transformer_shared_gene_identity",

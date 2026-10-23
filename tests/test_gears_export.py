@@ -6,7 +6,14 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
+from scripts.prepare_gears_baseline import prepare_gears_preflight
+from src.data.io import load_anndata
+from src.data.pairing import build_training_bundle, save_processed_bundle
+from src.data.preprocess import prepare_adata, select_hvgs_from_training_partitions
+from src.data.schema import resolve_schema
+from src.utils.config import load_yaml
 from src.integrations.gears_export import build_gears_input_adata, validate_rebuilt_bundle
 
 
@@ -187,3 +194,118 @@ def test_rebuilt_bundle_validation_rejects_changed_split_membership():
     rebuilt.splits["unseen_test"] = np.array([5, 6], dtype=np.int64)
     with pytest.raises(ValueError, match="split unseen_test"):
         validate_rebuilt_bundle(rebuilt, bundle)
+
+
+def test_source_h5ad_reprocessing_exports_exact_gears_input(tmp_path):
+    rng = np.random.default_rng(19)
+    perturbations = ["control"] * 8
+    sample_ids = [f"control-{index}" for index in range(8)]
+    for perturbation in ("A", "B", "C", "D"):
+        perturbations.extend([perturbation] * 8)
+        sample_ids.extend(f"{perturbation}-{index}" for index in range(8))
+
+    raw = ad.AnnData(
+        X=rng.poisson(5, size=(len(perturbations), 12)).astype(np.float32),
+        obs=pd.DataFrame(
+            {"pert": perturbations, "celltype": ["K562"] * len(perturbations)},
+            index=sample_ids,
+        ),
+        var=pd.DataFrame(
+            {"gene_name": [f"GENE{index}" for index in range(12)]},
+            index=[f"g{index}" for index in range(12)],
+        ),
+    )
+    raw_path = tmp_path / "raw.h5ad"
+    raw.write_h5ad(raw_path)
+    config = {
+        "dataset": {"control_label": "control"},
+        "schema": {
+            "preset": "",
+            "perturbation_col": "pert",
+            "batch_col": "none",
+            "context_cols": ["celltype"],
+            "control_label_candidates": ["control"],
+            "perturbation_col_candidates": ["pert"],
+            "batch_col_candidates": [],
+            "context_col_candidates": ["celltype"],
+            "multi_gene_delimiters": [";", "+", ",", "|", "_"],
+        },
+        "preprocess": {
+            "min_genes_per_cell": 0,
+            "min_cells_per_gene": 1,
+            "normalize_total_target_sum": 10000,
+            "log1p": True,
+            "hvg_top_genes": 4,
+            "max_cells_per_perturbation": None,
+        },
+        "pairing": {"target": "delta_expression"},
+        "split": {"val_fraction": 0.25, "test_fraction": 0.25, "random_seed": 42},
+    }
+    config_path = tmp_path / "data.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    loaded_config = load_yaml(config_path)
+    schema = resolve_schema(
+        adata=load_anndata(raw_path),
+        dataset_config=loaded_config,
+        cli_perturbation_col="auto",
+        cli_control_label=None,
+        cli_batch_col="auto",
+        cli_context_cols=["auto"],
+    )
+    prepared = prepare_adata(
+        adata=load_anndata(raw_path),
+        preprocess_config=dict(loaded_config["preprocess"]),
+        perturbation_col=schema.perturbation_col,
+        control_label=schema.control_label,
+        random_seed=42,
+        select_hvg=False,
+        filter_genes_before_split=False,
+        normalize_expression=False,
+    )
+    prepared = select_hvgs_from_training_partitions(
+        adata=prepared,
+        preprocess_config=dict(loaded_config["preprocess"]),
+        perturbation_col=schema.perturbation_col,
+        control_label=schema.control_label,
+        val_fraction=0.25,
+        test_fraction=0.25,
+        random_seed=42,
+    )
+    initial_bundle = build_training_bundle(
+        adata=prepared,
+        perturbation_col=schema.perturbation_col,
+        control_label=schema.control_label,
+        batch_col=schema.batch_col,
+        context_cols=schema.context_cols,
+        val_fraction=0.25,
+        test_fraction=0.25,
+        random_seed=42,
+    )
+    bundle_dir = tmp_path / "bundle"
+    save_processed_bundle(initial_bundle, bundle_dir)
+
+    output_dir = tmp_path / "export"
+    manifest = prepare_gears_preflight(
+        bundle_dir,
+        output_dir,
+        source_h5ad=raw_path,
+        data_config_path=config_path,
+    )
+
+    assert manifest["source_preprocessing_reproduction_verified"] is True
+    assert manifest["gears_input_h5ad_exported"] is True
+    assert manifest["source_validation"]["source_cell_identity_verified"] is True
+    assert manifest["source_preprocessing_reproduction"]["split_indices_match"] is True
+    assert manifest["gears_input"]["expression_reconstruction_verified"] is True
+    assert len(manifest["gears_input_h5ad_sha256"]) == 64
+
+    exported = ad.read_h5ad(output_dir / "gears_input.h5ad")
+    assert exported.n_obs == len(initial_bundle.sample_ids) + 8
+    assert exported.n_vars == len(initial_bundle.gene_names)
+    assert {"condition", "cell_type", "scgpt_sample_id", "scgpt_split"}.issubset(
+        exported.obs.columns
+    )
+    assert set(exported.obs.loc[exported.obs["condition"] == "ctrl", "scgpt_split"]) == {
+        "train"
+    }
+    assert exported.uns["scgpt_gears_export"]["de_statistics_computed"] is False

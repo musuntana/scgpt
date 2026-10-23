@@ -65,6 +65,11 @@ def test_build_run_summary_collects_required_fields(tmp_path):
         json.dumps({"pearson_per_perturbation": 0.35, "overall_mse": 0.1}),
         encoding="utf-8",
     )
+    unseen_metrics_path = output_dir / "unseen_test_metrics.json"
+    unseen_metrics_path.write_text(
+        json.dumps({"pearson_per_perturbation": -1.0, "overall_mse": 999.0}),
+        encoding="utf-8",
+    )
     checkpoint_path = output_dir / "best_model.pt"
     checkpoint_path.write_bytes(b"checkpoint")
 
@@ -79,6 +84,7 @@ def test_build_run_summary_collects_required_fields(tmp_path):
         train_config_path="configs/train.yaml",
         history_path=history_path,
         seen_metrics_path=seen_metrics_path,
+        unseen_metrics_path=unseen_metrics_path,
     )
 
     assert summary["dataset"]["name"] == "scperturb_norman2019"
@@ -90,6 +96,7 @@ def test_build_run_summary_collects_required_fields(tmp_path):
     )
     assert preprocessing_audit["hvg_fit_perturbed_sample_count"] == 1
     assert summary["test_metrics"]["seen_test"]["overall_mse"] == 0.1
+    assert "unseen_test" not in summary["test_metrics"]
     provenance = summary["provenance"]
     assert provenance["schema_version"] == 1
     assert provenance["runtime"]["python"]

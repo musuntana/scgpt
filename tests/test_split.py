@@ -9,6 +9,9 @@ def test_can_stratify_requires_nonempty_labels_with_two_samples_per_class():
     assert _can_stratify(np.array([0, 0, 1, 1, 2, 2]))
     assert not _can_stratify(np.array([0, 0, 1, 2]))
     assert not _can_stratify(np.array([], dtype=np.int64))
+    labels = np.repeat(np.arange(3), 2)
+    assert not _can_stratify(labels, train_size=2, test_size=4)
+    assert _can_stratify(labels, train_size=3, test_size=3)
 
 
 def test_seen_split_preserves_class_counts_when_stratification_is_possible():

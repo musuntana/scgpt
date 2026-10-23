@@ -224,17 +224,8 @@ def run_gears_baseline(
         raise ValueError("Custom GEARS split must have non-empty train, val and test conditions.")
 
     bundle = load_processed_bundle(bundle_path)
-    with (bundle_path / "metadata.json").open(encoding="utf-8") as handle:
-        bundle_metadata = json.load(handle)
-    bundle_payload = {
-        "metadata": bundle_metadata,
-        "control_expression": bundle.control_expression,
-        "target_delta": bundle.target_delta,
-        "perturbation_index": bundle.perturbation_index,
-        "sample_ids": bundle.sample_ids,
-        "splits": bundle.splits,
-    }
-    expected_split, _ = build_gears_split_contract(bundle_payload)
+    bundle_metadata = bundle["metadata"]
+    expected_split, _ = build_gears_split_contract(bundle)
     if split_json != expected_split:
         raise ValueError(
             "GEARS custom split JSON no longer matches the hashed processed bundle; "
@@ -376,16 +367,16 @@ def run_gears_baseline(
 
     checkpoint_dir = output / "checkpoint"
     model.save_model(str(checkpoint_dir))
-    test_indices = bundle.splits["unseen_test"]
+    test_indices = bundle["splits"]["unseen_test"]
     test_perturbation_indices = sorted(
-        set(bundle.perturbation_index[test_indices].astype(int).tolist())
+        set(bundle["perturbation_index"][test_indices].astype(int).tolist())
     )
-    test_names = [bundle.perturbation_names[index] for index in test_perturbation_indices]
+    test_names = [bundle_metadata["perturbation_names"][index] for index in test_perturbation_indices]
     prediction_output = model.predict([[name] for name in test_names])
     predictions = {name: prediction_output[name] for name in test_names}
     metrics = compute_absolute_expression_metrics(
         predictions,
-        bundle_payload,
+        bundle,
         split_name="unseen_test",
     )
 

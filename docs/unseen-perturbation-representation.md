@@ -31,6 +31,16 @@ This is a minimal controlled prototype, not a replacement for a biologically inf
 
 The current processed bundle stores `gene_names` and `perturbation_names`. The prototype only maps a perturbation when its label exactly matches a saved `gene_names` entry. It does not infer aliases, strip prefixes, convert Ensembl IDs, or silently substitute an unknown token.
 
+Before training, inspect mapping coverage without loading the large expression arrays:
+
+```bash
+uv run python scripts/inspect_gene_identity_coverage.py \
+  --bundle-dir data/processed/norman2019_demo_bundle \
+  --output-json artifacts/shared-gene-identity/gene-identity-coverage.json
+```
+
+The command reads only `metadata.json`, writes ordered-name SHA-256 digests, exact mapping coverage, unmapped labels, and ambiguous duplicate gene names. It exits with status 2 when coverage is incomplete or gene names are ambiguous, while still preserving the report.
+
 The dataset exposes:
 - `perturbation_gene_index`: exact matched gene index, or `-1` when unmapped;
 - `num_mapped_perturbations`: number of perturbation labels that map exactly;

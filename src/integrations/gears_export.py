@@ -45,27 +45,34 @@ def validate_rebuilt_bundle(
                 "check source H5AD, config, schema overrides and preprocessing version."
             )
 
-    for name in ("perturbation_index",):
-        if not np.array_equal(getattr(rebuilt, name), saved[name]):
-            raise ValueError(
-                f"Reprocessed source does not reproduce bundle {name}; "
-                "refusing to export a mismatched GEARS input."
-            )
+    if not np.array_equal(rebuilt.perturbation_index, saved["perturbation_index"]):
+        raise ValueError(
+            "Reprocessed source does not reproduce bundle perturbation_index; "
+            "refusing to export a mismatched GEARS input."
+        )
     for name in ("control_expression", "target_delta"):
-        if not np.allclose(
-            getattr(rebuilt, name), saved[name], rtol=rtol, atol=atol, equal_nan=False
+        actual_array = np.asarray(getattr(rebuilt, name))
+        expected_array = np.asarray(saved[name])
+        if actual_array.shape != expected_array.shape or not np.allclose(
+            actual_array, expected_array, rtol=rtol, atol=atol, equal_nan=False
         ):
-            max_abs = float(
-                np.max(np.abs(np.asarray(getattr(rebuilt, name)) - np.asarray(saved[name])))
+            max_abs = (
+                float(np.max(np.abs(actual_array - expected_array)))
+                if actual_array.shape == expected_array.shape and actual_array.size
+                else None
             )
             raise ValueError(
                 f"Reprocessed source does not reproduce bundle {name} "
-                f"(max absolute difference {max_abs:.6g}); refusing export."
+                f"(max absolute difference {max_abs}); refusing export."
             )
 
     rebuilt_splits = rebuilt.splits
     saved_splits = saved["splits"]
-    for name in ("seen_train", "seen_val", "seen_test", "unseen_train", "unseen_val", "unseen_test"):
+    split_names = (
+        "seen_train", "seen_val", "seen_test",
+        "unseen_train", "unseen_val", "unseen_test",
+    )
+    for name in split_names:
         if name not in saved_splits or not np.array_equal(
             np.asarray(rebuilt_splits[name]), np.asarray(saved_splits[name])
         ):
@@ -95,12 +102,11 @@ def build_gears_input_adata(
     control_label: str,
     context_cols: list[str],
 ) -> tuple[Any, dict[str, Any]]:
-    """Build a GEARS-schema AnnData while preserving exact processed cells and split IDs.
+    """Build a GEARS-schema AnnData preserving processed cells and split identities.
 
-    The expression matrix is the same training-HVG-filtered, normalized/log1p
-    matrix used to create the repository bundle. Only bundle perturbation cells
-    and the filtered control reference are included. No DE statistics are
-    computed here; the caller must use a leakage-audited GEARS runtime path.
+    Only the bundle's perturbation cells and the filtered control reference are
+    included. No DE statistics are computed here; a leakage-audited GEARS
+    runtime must be used for any subsequent training.
     """
     if perturbation_col not in prepared_adata.obs:
         raise ValueError(f"Prepared AnnData has no {perturbation_col!r} column.")
@@ -167,7 +173,6 @@ def build_gears_input_adata(
     if len(set(sample_ids)) != len(sample_ids):
         raise ValueError("Bundle sample IDs must be unique.")
 
-    # Re-run the contract checks before using indices to label AnnData rows.
     split_conditions, split_manifest = build_gears_split_contract(bundle)
     obs_ids = prepared_adata.obs_names.astype(str).tolist()
     obs_id_set = set(obs_ids)
@@ -193,13 +198,10 @@ def build_gears_input_adata(
             f"at sample {sample_ids[mismatch_index]!r}."
         )
 
+    all_obs_labels = prepared_adata.obs[perturbation_col].astype(str).tolist()
     source_perturbed_ids = {
         obs_id
-        for obs_id, label in zip(
-            obs_ids,
-            prepared_adata.obs[perturbation_col].astype(str).tolist(),
-            strict=True,
-        )
+        for obs_id, label in zip(obs_ids, all_obs_labels, strict=True)
         if label != control_label
     }
     if source_perturbed_ids != set(sample_ids):
@@ -234,11 +236,7 @@ def build_gears_input_adata(
     }
     control_ids = {
         obs_id
-        for obs_id, label in zip(
-            obs_ids,
-            prepared_adata.obs[perturbation_col].astype(str).tolist(),
-            strict=True,
-        )
+        for obs_id, label in zip(obs_ids, all_obs_labels, strict=True)
         if label == control_label
     }
     if not control_ids:

@@ -147,7 +147,9 @@ def build_gears_split_contract(
         "protocol_matched_real_metrics_available": False,
         "comparison_eligible": False,
         "blocking_checks": [
+            "replace GEARS default all-condition DE/dropout preprocessing with a leakage-audited train-only path",
             "GEARS GO-graph inclusion of every held-out perturbation",
+            "train-only co-expression graph construction",
             "source AnnData cell and gene identity mapping",
             "identical sample split and expression target",
             "real model execution and protocol-matched evaluation",
@@ -162,6 +164,7 @@ def validate_source_identity(
     *,
     perturbation_col: str,
     control_label: str,
+    context_col: str | None = None,
 ) -> dict[str, Any]:
     """Validate observable raw/source identities without claiming model compatibility.
 
@@ -212,10 +215,19 @@ def validate_source_identity(
         )
     if not adata.var["gene_name"].is_unique:
         raise ValueError("GEARS gene_name annotation must be unique.")
-    if "cell_type" not in adata.obs.columns:
+    resolved_context_col = context_col or ("cell_type" if "cell_type" in adata.obs.columns else None)
+    if resolved_context_col is None or resolved_context_col not in adata.obs.columns:
         raise ValueError(
-            "GEARS requires obs['cell_type']; add a verified cell-context mapping "
-            "(for example, from celltype_new) before proceeding."
+            "GEARS requires a verified cell-context column; provide the configured "
+            "context column (for example, celltype_new) so the exporter can map it "
+            "to obs['cell_type']."
+        )
+    if adata.obs[resolved_context_col].isna().any():
+        raise ValueError(f"Cell-context column {resolved_context_col!r} contains missing values.")
+    if adata.obs[resolved_context_col].astype(str).nunique() != 1:
+        raise ValueError(
+            "Official GEARS does not support cross-cell-type transfer; expected one "
+            f"cell context in {resolved_context_col!r}."
         )
     return {
         "source_cell_identity_verified": True,

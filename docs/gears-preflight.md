@@ -1,12 +1,12 @@
-# GEARS baseline: strict split-export preflight
+# GEARS baseline: source-data export and leakage gates
 
-**Status: preflight tooling only. No GEARS model has been installed, trained, or evaluated by this feature.**
+**Status: data-export tooling only. No GEARS model has been installed, trained, or evaluated by this feature.**
 
-The official [GEARS](https://github.com/snap-stanford/GEARS) `PertData.prepare_split(split="custom", split_dict_path=...)` reads a Python pickle whose values are lists of **condition names**. Our bundle instead stores **perturbed-cell indices**. Use this converter only for the group-disjoint `unseen` protocol; a cell-level `seen` split cannot be expressed as GEARS condition lists.
+The official [GEARS](https://github.com/snap-stanford/GEARS) `PertData.prepare_split(split="custom", split_dict_path=...)` reads a Python pickle whose values are lists of **condition names**. This repository stores **perturbed-cell indices**. The preflight converter only accepts the group-disjoint `unseen` protocol; a cell-level `seen` split cannot be expressed as GEARS condition lists.
 
 ## 1. Prepare a fresh leakage-aware bundle
 
-Use the repository's existing Norman2019 pipeline on your local authorized/public `.h5ad`:
+Use the repository's existing Norman2019 pipeline on the local authorized/public `.h5ad`:
 
 ```bash
 ./scripts/run_preprocess_demo.sh \
@@ -14,9 +14,11 @@ Use the repository's existing Norman2019 pipeline on your local authorized/publi
   --output-dir data/processed/norman2019_gears_preflight_bundle
 ```
 
-The converter **rejects** legacy bundles that lack the training-only gene-filter/HVG provenance introduced by PR #10. Its validation does not regenerate data or train a model.
+The converter rejects legacy bundles that lack the training-only gene-filter/HVG provenance. Its validation does not silently regenerate or overwrite an existing bundle.
 
-## 2. Export a condition-level split and review provenance
+## 2. Export a split contract and verify the source
+
+For a contract-only export (no raw H5AD required):
 
 ```bash
 uv run python scripts/prepare_gears_baseline.py \
@@ -24,49 +26,47 @@ uv run python scripts/prepare_gears_baseline.py \
   --output-dir artifacts/gears_preflight
 ```
 
-Output:
-
-| File | Purpose |
-| --- | --- |
-| `gears_custom_split.pkl` | Locally generated Python pickle for official `PertData.prepare_split(split="custom", split_dict_path=...)` |
-| `gears_custom_split.json` | Human-reviewable equivalent, without pickle parsing |
-| `gears_preflight.json` | SHA-256 of all three bundle files, sample/condition counts, split contract, and **unverified** compatibility gates |
-
-The conversion maps a single-gene condition `GENE` to `GENE+ctrl`. Shared `ctrl` samples belong to the GEARS training condition list only. A gene/condition present in more than one partition, missing samples, duplicate sample indices, legacy preprocessing, ambiguous multi-gene labels, or an incomplete split **fails closed**. Existing export files are not overwritten.
-
-When the original H5AD contains a verified `obs['cell_type']`, `var['gene_name']`, a resolvable perturbation column, and exact matching sample IDs, optionally add:
+For a **verified GEARS-schema AnnData input**, supply the same raw source H5AD used to create the bundle:
 
 ```bash
 uv run python scripts/prepare_gears_baseline.py \
   --bundle-dir data/processed/norman2019_gears_preflight_bundle \
-  --output-dir artifacts/gears_preflight_with_source \
-  --source-h5ad data/raw/NormanWeissman2019_filtered.h5ad
+  --source-h5ad data/raw/NormanWeissman2019_filtered.h5ad \
+  --output-dir artifacts/gears_preflight_source
 ```
 
-This performs **metadata identity checks only**; it does not rewrite the H5AD or automatically synthesize unverified gene-symbol/cell-type annotations. If the upstream schema is different, it fails until you supply a validated mapping. Source H5AD is opened read-only and its SHA-256 is recorded.
+If preprocessing used CLI overrides, pass the same values again, for example `--hvg-top-genes`, `--max-cells-per-perturbation`, `--perturbation-col`, `--control-label`, `--batch-col`, and `--context-cols`. The exporter re-runs the configured preprocessing and refuses to export unless sample IDs, gene order, perturbation indices, all split indices, control expression and target deltas reproduce the saved bundle.
 
-## 3. Separate, optional GEARS runtime (not yet implemented here)
+The source H5AD is not rewritten. The exporter preserves exactly the processed perturbation-cell IDs and includes the same filtered control reference cells, maps single-gene conditions to `GENE+ctrl`, adds `condition` / `cell_type` / `gene_name`, and records each perturbation cell's unseen train/validation/test partition. It requires one cell context (GEARS documents no cross-cell-type transfer support) and a unique, verified `var['gene_name']` mapping.
 
-The official library supports the custom split as follows **after** constructing a compatible GEARS `PertData` object:
+Output files:
 
-```python
-pert_data.prepare_split(
-    split="custom",
-    split_dict_path="artifacts/gears_preflight/gears_custom_split.pkl",
-)
-pert_data.get_dataloader(batch_size=32, test_batch_size=128)
-```
+| File | Purpose |
+| --- | --- |
+| `gears_custom_split.pkl` | Locally generated condition-level split for GEARS' custom split API |
+| `gears_custom_split.json` | Human-reviewable equivalent, without pickle parsing |
+| `gears_preflight.json` | Source/bundle SHA-256 hashes, reproduction checks, split contract, and unresolved gates |
+| `gears_input.h5ad` | Created only when `--source-h5ad` is supplied and exact reproduction succeeds; carries the processed expression matrix and split labels |
 
-Use an isolated GEARS environment. Do not add `cell-gears` / PyTorch Geometric to the project's core `uv.lock` until compatibility is verified. GEARS' `PertData` may download ontology resources and **filter out perturbations absent from its GO graph**. Check after loading that every exported train/val/test condition is present in the built dataset and graph, with the exact intended sample membership. If conditions disappear, **stop** and record the list; do not silently calculate a partial benchmark.
+The exporter rejects overlapping perturbation groups, missing/duplicate samples, ambiguous multi-gene labels, legacy preprocessing, source/bundle mismatches, expression mismatches, and incompatible cell/gene metadata. It refuses to overwrite existing output artifacts.
 
-### Mandatory unresolved gates
+## 3. Important: do not use GEARS' default DE preprocessing for this split
 
-1. **Cell membership:** GEARS' condition-list split does not encode a subset of cell IDs. The existing bundle may have capped/QC-filtered cells. A compatible GEARS input AnnData must preserve the exact intended sample membership and controls, not simply load its built-in Norman dataset.
-2. **Graph coverage:** All held-out perturbation genes must exist in GEARS' graph at inference time. The exporter cannot check this without GEARS resources.
-3. **Expression target:** GEARS evaluates expression; this repository evaluates predicted deltas against a batch/context-aware control mean over selected genes. Both target space and gene mapping must be matched before direct score comparison.
-4. **Train/val/test isolation:** Reconfirm GEARS' dataloaders and downstream graph construction use train-only information where required; do not assume that an exported condition list proves scientific leakage freedom.
-5. **Real evidence:** Run an isolated GEARS smoke test and at least three seeds of protocol-matched Norman2019 evaluation before any scientific performance claims.
+The upstream `PertData.new_data_process(..., skip_calc_de=False)` calls `get_DE_genes` and `get_dropout_non_zero_genes` on the full AnnData **before** the custom split is used to make loaders. Those steps calculate condition-level DE rankings and expression-derived gene masks using validation/test condition cells. That is an information-leakage risk for an unseen-perturbation benchmark.
 
-**Never interpret `PREFLIGHT_ONLY` as a trained baseline or a successful zero-shot experiment.** The JSON deliberately sets `comparison_eligible: false`. Only locally generated trusted pickles should be passed to GEARS, because its upstream custom split loader uses Python pickle.
+The exported `gears_input.h5ad` deliberately has **no GEARS DE statistics**. It is an input-stage artifact, not permission to call the default upstream processing path. The next runtime integration must provide a reviewed train-only metadata path, keep the held-out conditions out of co-expression graph construction and model fitting, and report metrics over a declared gene universe without presenting train-derived variable genes as true per-condition DE genes.
+
+GEARS' custom split loader expects condition names and its training code consumes DE metadata for auxiliary metrics. Do not run the standard `GEARS.train()` evaluation path on this input until the train-only adapter is implemented and audited; otherwise it may fail or report misleading DE-specific metrics.
+
+## 4. Remaining acceptance gates
+
+1. **Source-cell identity:** verified only when `source_preprocessing_reproduction_verified=true` in the manifest.
+2. **GO graph coverage:** check that every train/validation/test perturbation gene is represented by the GEARS GO graph. Stop if any condition is filtered or unrepresentable.
+3. **Train-only graph construction:** the co-expression graph must use only train conditions and controls.
+4. **Leakage-safe GEARS metadata:** DE rankings/dropout masks must not use validation/test expression. If using a common train-derived feature subset for model selection, label it as such; do not call it test-condition DE.
+5. **Target alignment:** this repository evaluates deltas against batch/context-aware control means. GEARS predicts expression; any subtraction and aggregation must use the exact declared control reference and the same selected gene order.
+6. **Real evidence:** run in an isolated optional environment, capture checkpoint/config/data/split hashes, runtime, memory, per-perturbation results and at least three seeds before making performance claims.
+
+**Stop condition:** Until all gates pass, `PREFLIGHT_ONLY` and `INPUT_ONLY_NO_MODEL_RUN` must remain non-comparable artifacts. Do not place their values next to Transformer/MLP/XGBoost results or claim zero-shot generalization.
 
 Tracking: [Issue #12](https://github.com/musuntana/scgpt/issues/12). Architectural comparison: [perturbation-modeling-options.md](perturbation-modeling-options.md).

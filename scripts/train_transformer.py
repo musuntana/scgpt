@@ -94,6 +94,7 @@ def main() -> None:
     )
 
     output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     trainer = Trainer(model=model, config=trainer_config, output_dir=output_dir)
     history = trainer.fit(train_loader=train_loader, val_loader=val_loader)
     with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:

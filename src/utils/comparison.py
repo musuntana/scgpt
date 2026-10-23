@@ -73,14 +73,17 @@ def extract_summary_row(summary: dict, label: str) -> dict | None:
     test_metrics = summary.get("test_metrics") or summary.get("metrics")
     if not test_metrics:
         return None
-    seen = test_metrics.get("seen_test", {})
-    unseen = test_metrics.get("unseen_test", {})
+    train_protocol = _extract_train_protocol(summary)
+    # Legacy summaries may contain both test splits from one checkpoint. Only
+    # retain metrics matching the protocol that actually trained the model.
+    seen = test_metrics.get("seen_test", {}) if train_protocol == "seen" else {}
+    unseen = test_metrics.get("unseen_test", {}) if train_protocol == "unseen" else {}
     return {
         "model": label,
         "base_model_label": normalize_seeded_label(label),
         "model_type": _extract_model_type(summary, label),
         "dataset_name": _extract_dataset_name(summary),
-        "train_protocol": _extract_train_protocol(summary),
+        "train_protocol": train_protocol,
         "seed": _extract_seed(summary),
         "seen_pearson": seen.get("pearson_per_perturbation"),
         "seen_mse": seen.get("mse_per_perturbation"),
@@ -131,7 +134,12 @@ def scan_artifact_comparison_rows(artifact_root: str | Path) -> list[dict]:
 def shorten_model_label(label: str) -> str:
     """Collapse artifact directory names into short model labels for charts."""
     shortened = label
-    for suffix in ("_seen_norman2019_demo", "_seen_synthetic_demo"):
+    for suffix in (
+        "_seen_norman2019_demo",
+        "_unseen_norman2019_demo",
+        "_seen_synthetic_demo",
+        "_unseen_synthetic_demo",
+    ):
         shortened = shortened.removesuffix(suffix)
     return shortened
 

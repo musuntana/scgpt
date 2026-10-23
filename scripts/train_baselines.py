@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.pairing import load_processed_bundle
 from src.data.torch_dataset import ProcessedDataset
 from src.evaluation.metrics import compute_regression_metrics
+from src.evaluation.protocol import matching_test_split
 from src.models.mlp import MLPBaseline
 from src.models.xgboost_baseline import build_xgboost_baseline
 from src.training.trainer import Trainer, TrainerConfig
@@ -85,6 +86,7 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     bundle = load_processed_bundle(args.bundle_dir)
     splits = bundle["splits"]
     metadata = bundle["metadata"]
+    test_split_name = matching_test_split(args.split_prefix, splits)
 
     train_idx = splits[f"{args.split_prefix}_train"]
 
@@ -105,26 +107,33 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, output_dir / "xgboost_model.joblib")
+    with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "schema_version": 1,
+                "train_protocol": args.split_prefix,
+                "checkpoint_selection_split": None,
+                "test_split": test_split_name,
+                "training_seed": int(train_config_payload["train"]["seed"]),
+            },
+            handle,
+            indent=2,
+        )
 
     metrics_by_split: dict[str, dict[str, float]] = {}
-    eval_splits = [f"{args.split_prefix}_test"]
-    for candidate in ("seen_test", "unseen_test"):
-        if candidate in splits and candidate not in eval_splits:
-            eval_splits.append(candidate)
-
-    for split_name in eval_splits:
-        split_indices = splits[split_name]
-        predictions = model.predict(features[split_indices])
-        metrics = _evaluate_numpy_baseline(
-            predictions=predictions,
-            targets=targets[split_indices],
-            perturbation_index=bundle["perturbation_index"][split_indices],
-        )
-        metrics_by_split[split_name] = metrics
-        metrics_path = output_dir / f"xgboost_{split_name}_metrics.json"
-        with metrics_path.open("w", encoding="utf-8") as handle:
-            json.dump(metrics, handle, indent=2)
-        LOGGER.info("Saved XGBoost metrics to %s", metrics_path)
+    split_name = test_split_name
+    split_indices = splits[split_name]
+    predictions = model.predict(features[split_indices])
+    metrics = _evaluate_numpy_baseline(
+        predictions=predictions,
+        targets=targets[split_indices],
+        perturbation_index=bundle["perturbation_index"][split_indices],
+    )
+    metrics_by_split[split_name] = metrics
+    metrics_path = output_dir / f"xgboost_{split_name}_metrics.json"
+    with metrics_path.open("w", encoding="utf-8") as handle:
+        json.dump(metrics, handle, indent=2)
+    LOGGER.info("Saved XGBoost metrics to %s", metrics_path)
 
     summary = {
         "model_type": "xgboost",
@@ -152,6 +161,7 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     seed_everything(int(train_config_payload["train"]["seed"]))
     trainer_config = TrainerConfig.from_dict(train_config_payload)
     bundle = load_processed_bundle(args.bundle_dir)
+    test_split_name = matching_test_split(args.split_prefix, bundle["splits"])
 
     train_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_train")
     val_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_val")
@@ -175,24 +185,36 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     )
     trainer = Trainer(model=model, config=trainer_config, output_dir=args.output_dir)
     trainer.fit(train_loader, val_loader)
-    checkpoint_path = Path(args.output_dir) / "best_model.pt"
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "schema_version": 1,
+                "train_protocol": args.split_prefix,
+                "checkpoint_selection_split": f"{args.split_prefix}_val",
+                "test_split": test_split_name,
+                "training_seed": int(train_config_payload["train"]["seed"]),
+            },
+            handle,
+            indent=2,
+        )
+    checkpoint_path = output_dir / "best_model.pt"
     trainer.model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
 
-    for split_name in ("seen_test", "unseen_test"):
-        if split_name not in bundle["splits"]:
-            continue
-        eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
-        eval_loader = DataLoader(
-            eval_dataset,
-            batch_size=trainer_config.batch_size,
-            shuffle=False,
-            num_workers=trainer_config.num_workers,
-        )
-        metrics = trainer.evaluate(eval_loader)
-        metrics_path = Path(args.output_dir) / f"mlp_{split_name}_metrics.json"
-        with metrics_path.open("w", encoding="utf-8") as handle:
-            json.dump(metrics, handle, indent=2)
-        LOGGER.info("Saved MLP metrics to %s", metrics_path)
+    split_name = test_split_name
+    eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
+    eval_loader = DataLoader(
+        eval_dataset,
+        batch_size=trainer_config.batch_size,
+        shuffle=False,
+        num_workers=trainer_config.num_workers,
+    )
+    metrics = trainer.evaluate(eval_loader)
+    metrics_path = Path(args.output_dir) / f"mlp_{split_name}_metrics.json"
+    with metrics_path.open("w", encoding="utf-8") as handle:
+        json.dump(metrics, handle, indent=2)
+    LOGGER.info("Saved MLP metrics to %s", metrics_path)
 
 
 def main() -> None:

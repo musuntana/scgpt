@@ -12,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.data.io import read_json
 from src.data.torch_dataset import ProcessedDataset
 from src.evaluation.deg import load_deg_artifact
 from src.evaluation.error_analysis import (
@@ -20,6 +21,7 @@ from src.evaluation.error_analysis import (
 )
 from src.evaluation.inference import load_torch_model_for_bundle
 from src.evaluation.metrics import compute_regression_metrics, compute_topk_deg_metrics
+from src.evaluation.protocol import validate_split_matches_training_protocol
 from src.training.trainer import Trainer, TrainerConfig
 from src.utils.config import load_yaml
 from src.utils.logger import get_logger
@@ -83,6 +85,16 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     train_config = load_yaml(args.train_config)
+    checkpoint_path = Path(args.checkpoint_path)
+    protocol_path = checkpoint_path.parent / "training_protocol.json"
+    run_summary_path = checkpoint_path.parent / "run_summary.json"
+    train_protocol = None
+    if protocol_path.exists():
+        train_protocol = read_json(protocol_path).get("train_protocol")
+    elif run_summary_path.exists():
+        run_summary = read_json(run_summary_path)
+        train_protocol = run_summary.get("split", {}).get("train_protocol")
+    validate_split_matches_training_protocol(train_protocol, args.split_name)
     dataset = ProcessedDataset(args.bundle_dir, args.split_name)
     loader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0)
 

@@ -16,7 +16,9 @@ remain unchanged, so current readers can continue consuming the artifact.
 - **Inputs:** SHA-256 and byte size for the raw dataset when it exists; the
   processed bundle's `arrays.npz`, `splits.npz`, and `metadata.json`; and
   the data/model/train configuration files.
-- **Output:** SHA-256 and byte size for the model checkpoint.
+- **Output:** SHA-256 and byte size for the model checkpoint and
+  `training_protocol.json` when present. This protocol record is also used to
+  reject evaluation or summary requests that conflict with the trained split.
 - **Timestamp:** UTC creation time for the provenance record.
 
 File hashing reads in 1 MiB chunks, so it does not load a large dataset or

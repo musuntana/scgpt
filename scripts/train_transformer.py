@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.data.pairing import load_processed_bundle
 from src.data.torch_dataset import ProcessedDataset
+from src.evaluation.protocol import matching_test_split
 from src.models.transformer import TransformerPerturbationModel
 from src.training.trainer import Trainer, TrainerConfig
 from src.utils.config import ensure_keys, load_yaml
@@ -62,6 +63,8 @@ def main() -> None:
 
     seed_everything(int(train_config_payload["train"]["seed"]))
     trainer_config = TrainerConfig.from_dict(train_config_payload)
+    bundle = load_processed_bundle(args.bundle_dir)
+    test_split_name = matching_test_split(args.split_prefix, bundle["splits"])
 
     train_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_train")
     val_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_val")
@@ -91,8 +94,21 @@ def main() -> None:
     )
 
     output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     trainer = Trainer(model=model, config=trainer_config, output_dir=output_dir)
     history = trainer.fit(train_loader=train_loader, val_loader=val_loader)
+    with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "schema_version": 1,
+                "train_protocol": args.split_prefix,
+                "checkpoint_selection_split": f"{args.split_prefix}_val",
+                "test_split": test_split_name,
+                "training_seed": int(train_config_payload["train"]["seed"]),
+            },
+            handle,
+            indent=2,
+        )
     LOGGER.info("Training complete. History length: %s", len(history))
 
     # Reload best checkpoint for test evaluation
@@ -101,23 +117,20 @@ def main() -> None:
         model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
         model.to(trainer.device)
 
-    # Evaluate on both seen and unseen test splits
-    bundle = load_processed_bundle(args.bundle_dir)
-    for split_name in ("seen_test", "unseen_test"):
-        if split_name not in bundle["splits"]:
-            continue
-        eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
-        eval_loader = DataLoader(
-            eval_dataset,
-            batch_size=trainer_config.batch_size,
-            shuffle=False,
-            num_workers=trainer_config.num_workers,
-        )
-        metrics = trainer.evaluate(eval_loader)
-        metrics_path = output_dir / f"{split_name}_metrics.json"
-        with metrics_path.open("w", encoding="utf-8") as handle:
-            json.dump(metrics, handle, indent=2)
-        LOGGER.info("Saved %s metrics to %s: %s", split_name, metrics_path, metrics)
+    # Evaluate only on the test split matching the training protocol.
+    split_name = test_split_name
+    eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
+    eval_loader = DataLoader(
+        eval_dataset,
+        batch_size=trainer_config.batch_size,
+        shuffle=False,
+        num_workers=trainer_config.num_workers,
+    )
+    metrics = trainer.evaluate(eval_loader)
+    metrics_path = output_dir / f"{split_name}_metrics.json"
+    with metrics_path.open("w", encoding="utf-8") as handle:
+        json.dump(metrics, handle, indent=2)
+    LOGGER.info("Saved %s metrics to %s: %s", split_name, metrics_path, metrics)
 
 
 if __name__ == "__main__":

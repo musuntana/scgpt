@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
-# Evaluate all three trained models (Transformer, MLP, XGBoost) on the
-# Norman2019 bundle and write per-model test metric JSON files.
+# Evaluate each trained model only on the test split matching its training protocol.
 #
 # Usage:
-#   ./scripts/run_full_evaluation.sh [--bundle-dir DIR] [--deg-artifact-path CSV]
+#   ./scripts/run_full_evaluation.sh [--bundle-dir DIR] [--split-prefix seen|unseen] [--deg-artifact-path CSV]
 #
 # Defaults:
-#   --bundle-dir            data/processed/norman2019_demo_bundle
-#   --deg-artifact-path     artifacts/transformer_seen_norman2019_demo/deg_artifact.csv
-#                           (passed only to the Transformer and MLP evaluations)
-#
-# Outputs (one file per model / split):
-#   artifacts/transformer_seen_norman2019_demo/seen_test_metrics.json
-#   artifacts/transformer_seen_norman2019_demo/unseen_test_metrics.json
-#   artifacts/transformer_seen_norman2019_demo/seen_test_per_perturbation.csv
-#   artifacts/transformer_seen_norman2019_demo/unseen_test_error_summary.json
-#   artifacts/mlp_seen_norman2019_demo/mlp_seen_test_metrics.json
-#   artifacts/mlp_seen_norman2019_demo/mlp_unseen_test_metrics.json
+#   --bundle-dir       data/processed/norman2019_demo_bundle
+#   --split-prefix     seen
+#   --deg-artifact-path auto-detected for the matching Transformer run when present
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,15 +19,16 @@ export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
 mkdir -p "${ROOT_DIR}/.cache/matplotlib"
 export MPLCONFIGDIR="${ROOT_DIR}/.cache/matplotlib"
 
-# ── Defaults ─────────────────────────────────────────────────────────────────
 BUNDLE_DIR="data/processed/norman2019_demo_bundle"
+SPLIT_PREFIX="seen"
 DEG_ARTIFACT=""
 
-# ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --bundle-dir)
             BUNDLE_DIR="$2"; shift 2 ;;
+        --split-prefix)
+            SPLIT_PREFIX="$2"; shift 2 ;;
         --deg-artifact-path)
             DEG_ARTIFACT="$2"; shift 2 ;;
         *)
@@ -44,97 +36,75 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Auto-detect DEG artifact if not provided
+if [[ "${SPLIT_PREFIX}" != "seen" && "${SPLIT_PREFIX}" != "unseen" ]]; then
+    echo "--split-prefix must be 'seen' or 'unseen'." >&2
+    exit 1
+fi
+
+TEST_SPLIT="${SPLIT_PREFIX}_test"
+TRANSFORMER_DIR="artifacts/transformer_${SPLIT_PREFIX}_norman2019_demo"
+MLP_DIR="artifacts/mlp_${SPLIT_PREFIX}_norman2019_demo"
+XGB_DIR="artifacts/xgboost_${SPLIT_PREFIX}_norman2019_demo"
+
 if [[ -z "${DEG_ARTIFACT}" ]]; then
-    CANDIDATE="artifacts/transformer_seen_norman2019_demo/deg_artifact.csv"
+    CANDIDATE="${TRANSFORMER_DIR}/deg_artifact.csv"
     if [[ -f "${CANDIDATE}" ]]; then
         DEG_ARTIFACT="${CANDIDATE}"
     fi
 fi
 
-echo "=== Full evaluation: Norman2019 bundle ==="
-echo "  bundle-dir       : ${BUNDLE_DIR}"
-echo "  deg-artifact     : ${DEG_ARTIFACT:-<none>}"
+echo "=== Protocol-matched evaluation ==="
+echo "  bundle-dir   : ${BUNDLE_DIR}"
+echo "  split-prefix : ${SPLIT_PREFIX}"
+echo "  test-split   : ${TEST_SPLIT}"
+echo "  deg-artifact : ${DEG_ARTIFACT:-<none>}"
 echo ""
 
-# ── Helper: build optional --deg-artifact-path flag ──────────────────────────
 deg_flag() {
     if [[ -n "${DEG_ARTIFACT}" && -f "${DEG_ARTIFACT}" ]]; then
         echo "--deg-artifact-path ${DEG_ARTIFACT}"
     fi
 }
 
-# ── Transformer ───────────────────────────────────────────────────────────────
-TRANSFORMER_DIR="artifacts/transformer_seen_norman2019_demo"
 TRANSFORMER_CKPT="${TRANSFORMER_DIR}/best_model.pt"
-
 if [[ -f "${TRANSFORMER_CKPT}" ]]; then
-    echo "--- Transformer: seen test ---"
+    echo "--- Transformer: ${TEST_SPLIT} ---"
     uv run python scripts/evaluate_model.py \
         --bundle-dir "${BUNDLE_DIR}" \
         --checkpoint-path "${TRANSFORMER_CKPT}" \
         --model-type transformer \
-        --split-name seen_test \
-        --output-path "${TRANSFORMER_DIR}/seen_test_metrics.json" \
-        --per-perturbation-output-path "${TRANSFORMER_DIR}/seen_test_per_perturbation.csv" \
-        --error-summary-output-path "${TRANSFORMER_DIR}/seen_test_error_summary.json" \
-        $(deg_flag)
-
-    echo "--- Transformer: unseen test ---"
-    uv run python scripts/evaluate_model.py \
-        --bundle-dir "${BUNDLE_DIR}" \
-        --checkpoint-path "${TRANSFORMER_CKPT}" \
-        --model-type transformer \
-        --split-name unseen_test \
-        --output-path "${TRANSFORMER_DIR}/unseen_test_metrics.json" \
-        --per-perturbation-output-path "${TRANSFORMER_DIR}/unseen_test_per_perturbation.csv" \
-        --error-summary-output-path "${TRANSFORMER_DIR}/unseen_test_error_summary.json" \
+        --split-name "${TEST_SPLIT}" \
+        --output-path "${TRANSFORMER_DIR}/${TEST_SPLIT}_metrics.json" \
+        --per-perturbation-output-path "${TRANSFORMER_DIR}/${TEST_SPLIT}_per_perturbation.csv" \
+        --error-summary-output-path "${TRANSFORMER_DIR}/${TEST_SPLIT}_error_summary.json" \
         $(deg_flag)
 else
     echo "[SKIP] Transformer checkpoint not found: ${TRANSFORMER_CKPT}"
 fi
 
-# ── MLP ───────────────────────────────────────────────────────────────────────
-MLP_DIR="artifacts/mlp_seen_norman2019_demo"
 MLP_CKPT="${MLP_DIR}/best_model.pt"
-
 if [[ -f "${MLP_CKPT}" ]]; then
-    echo "--- MLP: seen test ---"
+    echo "--- MLP: ${TEST_SPLIT} ---"
     uv run python scripts/evaluate_model.py \
         --bundle-dir "${BUNDLE_DIR}" \
         --checkpoint-path "${MLP_CKPT}" \
         --model-type mlp \
         --model-config configs/model.yaml \
-        --split-name seen_test \
-        --output-path "${MLP_DIR}/mlp_seen_test_metrics.json" \
-        --per-perturbation-output-path "${MLP_DIR}/mlp_seen_test_per_perturbation.csv" \
-        --error-summary-output-path "${MLP_DIR}/mlp_seen_test_error_summary.json" \
-        $(deg_flag)
-
-    echo "--- MLP: unseen test ---"
-    uv run python scripts/evaluate_model.py \
-        --bundle-dir "${BUNDLE_DIR}" \
-        --checkpoint-path "${MLP_CKPT}" \
-        --model-type mlp \
-        --model-config configs/model.yaml \
-        --split-name unseen_test \
-        --output-path "${MLP_DIR}/mlp_unseen_test_metrics.json" \
-        --per-perturbation-output-path "${MLP_DIR}/mlp_unseen_test_per_perturbation.csv" \
-        --error-summary-output-path "${MLP_DIR}/mlp_unseen_test_error_summary.json" \
+        --split-name "${TEST_SPLIT}" \
+        --output-path "${MLP_DIR}/mlp_${TEST_SPLIT}_metrics.json" \
+        --per-perturbation-output-path "${MLP_DIR}/mlp_${TEST_SPLIT}_per_perturbation.csv" \
+        --error-summary-output-path "${MLP_DIR}/mlp_${TEST_SPLIT}_error_summary.json" \
         $(deg_flag)
 else
     echo "[SKIP] MLP checkpoint not found: ${MLP_CKPT}"
 fi
 
-# ── XGBoost (no re-evaluation needed — metrics saved at train time) ───────────
-XGB_DIR="artifacts/xgboost_seen_norman2019_demo"
 XGB_SUMMARY="${XGB_DIR}/xgboost_run_summary.json"
-
 if [[ -f "${XGB_SUMMARY}" ]]; then
-    echo "--- XGBoost: metrics already in ${XGB_SUMMARY} (no checkpoint to reload) ---"
+    echo "--- XGBoost: metrics already recorded in ${XGB_SUMMARY} ---"
 else
     echo "[SKIP] XGBoost run summary not found: ${XGB_SUMMARY}"
 fi
 
 echo ""
-echo "=== Evaluation complete. ==="
+echo "=== Protocol-matched evaluation complete. ==="

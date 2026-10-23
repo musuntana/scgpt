@@ -190,6 +190,9 @@ def _build_provenance(
         },
         "outputs": {
             "checkpoint": _fingerprint_file(checkpoint_path),
+            "training_protocol": _fingerprint_file(
+                Path(checkpoint_path).parent / "training_protocol.json"
+            ),
         },
     }
 
@@ -299,6 +302,19 @@ def build_run_summary(
     train_config = load_yaml(train_config_path)
     if seed is not None:
         train_config.setdefault("train", {})["seed"] = int(seed)
+    protocol_path = Path(output_dir) / "training_protocol.json"
+    if protocol_path.exists():
+        protocol_payload = load_json(protocol_path)
+        recorded_protocol = (
+            protocol_payload.get("train_protocol")
+            if isinstance(protocol_payload, dict)
+            else None
+        )
+        if recorded_protocol in {"seen", "unseen"} and recorded_protocol != split_prefix:
+            raise ValueError(
+                f"Run summary requested protocol {split_prefix!r}, but training artifacts "
+                f"record protocol {recorded_protocol!r} in {protocol_path}."
+            )
     checkpoint_metric = str(train_config["train"]["checkpoint_metric"])
 
     history: list[dict[str, Any]] = []
@@ -308,10 +324,12 @@ def build_run_summary(
             history = loaded_history
 
     metrics: dict[str, Any] = {}
-    if seen_metrics_path is not None and Path(seen_metrics_path).exists():
-        metrics["seen_test"] = load_json(seen_metrics_path)
-    if unseen_metrics_path is not None and Path(unseen_metrics_path).exists():
-        metrics["unseen_test"] = load_json(unseen_metrics_path)
+    matching_metrics_path = (
+        seen_metrics_path if split_prefix == "seen" else unseen_metrics_path
+    )
+    matching_metric_name = f"{split_prefix}_test"
+    if matching_metrics_path is not None and Path(matching_metrics_path).exists():
+        metrics[matching_metric_name] = load_json(matching_metrics_path)
 
     split_config = data_config["split"]
     split_protocol_key = f"{split_prefix}_protocol"

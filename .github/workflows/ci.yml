@@ -1,5 +1,9 @@
 name: CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches: [main]
@@ -16,6 +20,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        shell: bash
+        run: |
+          for script in scripts/*.sh; do
+            bash -n "$script"
+          done
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4

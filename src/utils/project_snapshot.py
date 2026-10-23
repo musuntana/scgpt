@@ -11,7 +11,7 @@ from src.utils.project_health import collect_project_health
 
 
 def _display_name(label: str) -> str:
-    prefix = label.split("_seen_")[0]
+    prefix = label.split("_seen_")[0].split("_unseen_")[0]
     mapping = {
         "transformer": "Transformer",
         "mlp": "MLP",
@@ -42,11 +42,14 @@ def _filter_rows(rows: list[dict[str, Any]], suffix: str) -> list[dict[str, Any]
     return _sort_rows(filtered)
 
 
-def _best_row(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    candidates = [row for row in rows if row.get("unseen_pearson") is not None]
+def _best_row(
+    rows: list[dict[str, Any]],
+    metric_field: str = "unseen_pearson",
+) -> dict[str, Any] | None:
+    candidates = [row for row in rows if row.get(metric_field) is not None]
     if not candidates:
         return None
-    return max(candidates, key=lambda row: float(row["unseen_pearson"]))
+    return max(candidates, key=lambda row: float(row[metric_field]))
 
 
 def _asset_entry(project_root: Path, relative_path: str) -> dict[str, Any]:
@@ -57,14 +60,27 @@ def _asset_entry(project_root: Path, relative_path: str) -> dict[str, Any]:
     }
 
 
-def _transformer_real_summary(project_root: Path) -> dict[str, Any]:
-    summary_path = project_root / "artifacts/transformer_seen_norman2019_demo/run_summary.json"
+def _transformer_real_summary(
+    project_root: Path,
+    protocol: str = "seen",
+) -> dict[str, Any]:
+    if protocol not in {"seen", "unseen"}:
+        raise ValueError(f"Unsupported protocol: {protocol!r}")
+    summary_path = (
+        project_root
+        / f"artifacts/transformer_{protocol}_norman2019_demo/run_summary.json"
+    )
     if not summary_path.exists():
         return {}
-    return read_json(summary_path)
+    summary = read_json(summary_path)
+    recorded_protocol = summary.get("split", {}).get("train_protocol")
+    return summary if recorded_protocol == protocol else {}
 
 
-def _transformer_real_multiseed_summary(project_root: Path) -> dict[str, Any]:
+def _transformer_real_multiseed_summary(
+    project_root: Path,
+    protocol: str = "unseen",
+) -> dict[str, Any]:
     report_path = project_root / "artifacts/multi_seed_report.json"
     if not report_path.exists():
         return {}
@@ -76,7 +92,7 @@ def _transformer_real_multiseed_summary(project_root: Path) -> dict[str, Any]:
             continue
         if (
             row.get("dataset_name") == "scperturb_norman2019"
-            and row.get("train_protocol") == "seen"
+            and row.get("train_protocol") == protocol
             and row.get("model_type") == "transformer"
         ):
             return row
@@ -84,11 +100,24 @@ def _transformer_real_multiseed_summary(project_root: Path) -> dict[str, Any]:
 
 
 def _transformer_real_error_highlights(project_root: Path) -> dict[str, dict[str, Any]]:
-    artifact_dir = project_root / "artifacts/transformer_seen_norman2019_demo"
     highlights: dict[str, dict[str, Any]] = {}
-    for split_name in ("seen_test", "unseen_test"):
+    for protocol in ("seen", "unseen"):
+        split_name = f"{protocol}_test"
+        artifact_dir = project_root / f"artifacts/transformer_{protocol}_norman2019_demo"
         summary_path = artifact_dir / f"{split_name}_error_summary.json"
         if not summary_path.exists():
+            continue
+        protocol_path = artifact_dir / "training_protocol.json"
+        run_summary_path = artifact_dir / "run_summary.json"
+        if protocol_path.exists():
+            recorded_protocol = read_json(protocol_path).get("train_protocol")
+        elif run_summary_path.exists():
+            recorded_protocol = read_json(run_summary_path).get("split", {}).get(
+                "train_protocol"
+            )
+        else:
+            recorded_protocol = None
+        if recorded_protocol != protocol:
             continue
         highlights[split_name] = build_error_highlights(read_json(summary_path))
     return highlights
@@ -101,14 +130,20 @@ def build_project_snapshot(project_root: str | Path = ".") -> dict[str, Any]:
     all_rows = scan_artifact_comparison_rows(root / "artifacts")
     real_rows = _filter_rows(all_rows, "_norman2019_demo")
     synthetic_rows = _filter_rows(all_rows, "_synthetic_demo")
-    best_real = _best_row(real_rows)
-    transformer_summary = _transformer_real_summary(root)
-    transformer_multiseed = _transformer_real_multiseed_summary(root)
+    best_real_unseen = _best_row(real_rows, "unseen_pearson")
+    best_real_seen = _best_row(real_rows, "seen_pearson")
+    transformer_seen_summary = _transformer_real_summary(root, "seen")
+    transformer_unseen_summary = _transformer_real_summary(root, "unseen")
+    transformer_multiseed_seen = _transformer_real_multiseed_summary(root, "seen")
+    transformer_multiseed_unseen = _transformer_real_multiseed_summary(root, "unseen")
     transformer_error_highlights = _transformer_real_error_highlights(root)
-    transformer_unseen = transformer_summary.get("test_metrics", {}).get("unseen_test", {})
-    transformer_seen = transformer_summary.get("test_metrics", {}).get("seen_test", {})
-    bundle = transformer_summary.get("artifacts", {}).get("bundle", {})
-    dataset = transformer_summary.get("dataset", {})
+    transformer_seen = transformer_seen_summary.get("test_metrics", {}).get("seen_test", {})
+    transformer_unseen = transformer_unseen_summary.get("test_metrics", {}).get(
+        "unseen_test", {}
+    )
+    bundle_summary = transformer_seen_summary or transformer_unseen_summary
+    bundle = bundle_summary.get("artifacts", {}).get("bundle", {})
+    dataset = bundle_summary.get("dataset", {})
 
     unseen_values = [
         float(row["unseen_pearson"])
@@ -123,28 +158,47 @@ def build_project_snapshot(project_root: str | Path = ".") -> dict[str, Any]:
         "num_samples": bundle.get("num_samples"),
         "num_genes": bundle.get("num_genes"),
         "num_perturbations": bundle.get("num_perturbations"),
-        "best_real_unseen_model": best_real.get("display_name") if best_real else None,
-        "best_real_unseen_pearson": best_real.get("unseen_pearson") if best_real else None,
+        "best_real_seen_model": best_real_seen.get("display_name") if best_real_seen else None,
+        "best_real_seen_pearson": best_real_seen.get("seen_pearson") if best_real_seen else None,
+        "best_real_unseen_model": best_real_unseen.get("display_name") if best_real_unseen else None,
+        "best_real_unseen_pearson": (
+            best_real_unseen.get("unseen_pearson") if best_real_unseen else None
+        ),
         "transformer_seen_pearson": transformer_seen.get("pearson_per_perturbation"),
+        "transformer_seen_top100_deg_overlap": transformer_seen.get("topk_deg_overlap_100"),
         "transformer_unseen_pearson": transformer_unseen.get("pearson_per_perturbation"),
         "transformer_unseen_top20_deg_overlap": transformer_unseen.get("topk_deg_overlap_20"),
         "transformer_unseen_top100_deg_overlap": transformer_unseen.get("topk_deg_overlap_100"),
-        "transformer_multiseed_num_runs": transformer_multiseed.get("num_runs"),
-        "transformer_multiseed_seeds": transformer_multiseed.get("seeds"),
-        "transformer_multiseed_unseen_pearson_mean": transformer_multiseed.get(
+        "transformer_multiseed_seen_num_runs": transformer_multiseed_seen.get("num_runs"),
+        "transformer_multiseed_seen_seeds": transformer_multiseed_seen.get("seeds"),
+        "transformer_multiseed_seen_pearson_mean": transformer_multiseed_seen.get(
+            "seen_pearson_mean"
+        ),
+        "transformer_multiseed_seen_pearson_std": transformer_multiseed_seen.get(
+            "seen_pearson_std"
+        ),
+        "transformer_multiseed_seen_top100_deg_mean": transformer_multiseed_seen.get(
+            "seen_top100_deg_mean"
+        ),
+        "transformer_multiseed_seen_top100_deg_std": transformer_multiseed_seen.get(
+            "seen_top100_deg_std"
+        ),
+        "transformer_multiseed_unseen_num_runs": transformer_multiseed_unseen.get("num_runs"),
+        "transformer_multiseed_unseen_seeds": transformer_multiseed_unseen.get("seeds"),
+        "transformer_multiseed_unseen_pearson_mean": transformer_multiseed_unseen.get(
             "unseen_pearson_mean"
         ),
-        "transformer_multiseed_unseen_pearson_std": transformer_multiseed.get(
+        "transformer_multiseed_unseen_pearson_std": transformer_multiseed_unseen.get(
             "unseen_pearson_std"
         ),
-        "transformer_multiseed_unseen_top100_deg_mean": transformer_multiseed.get(
+        "transformer_multiseed_unseen_top100_deg_mean": transformer_multiseed_unseen.get(
             "unseen_top100_deg_mean"
         ),
-        "transformer_multiseed_unseen_top100_deg_std": transformer_multiseed.get(
+        "transformer_multiseed_unseen_top100_deg_std": transformer_multiseed_unseen.get(
             "unseen_top100_deg_std"
         ),
         "all_real_models_unseen_pearson_ge_0_82": (
-            min_real_unseen is not None and min_real_unseen >= 0.82
+            min_real_unseen >= 0.82 if min_real_unseen is not None else None
         ),
     }
 
@@ -194,6 +248,12 @@ def write_project_snapshot(snapshot: dict[str, Any], output_path: str | Path) ->
 def format_project_snapshot(snapshot: dict[str, Any]) -> str:
     """Render a human-readable project snapshot for local CLI use."""
     headline = snapshot["headline"]
+    unseen_threshold = headline.get("all_real_models_unseen_pearson_ge_0_82")
+    if unseen_threshold is None:
+        unseen_threshold_text = "not established (no protocol-matched unseen results)"
+    else:
+        unseen_threshold_text = "yes" if unseen_threshold else "no"
+
     lines = [
         "PerturbScope-GPT snapshot",
         f"Project root: {snapshot['project_root']}",
@@ -208,35 +268,46 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
             f" | perturbations={headline.get('num_perturbations') or 'unknown'}"
         ),
         (
-            "  Best real unseen Pearson: "
+            "  Best real seen-protocol Pearson: "
+            f"{headline.get('best_real_seen_model') or 'n/a'}"
+            f" ({_format_metric(headline.get('best_real_seen_pearson'))})"
+        ),
+        (
+            "  Best real unseen-protocol diagnostic Pearson: "
             f"{headline.get('best_real_unseen_model') or 'n/a'}"
             f" ({_format_metric(headline.get('best_real_unseen_pearson'))})"
         ),
         (
-            "  Transformer unseen Pearson / top-100 DEG overlap: "
+            "  Transformer seen Pearson / top-100 DEG overlap: "
+            f"{_format_metric(headline.get('transformer_seen_pearson'))}"
+            f" / {_format_metric(headline.get('transformer_seen_top100_deg_overlap'))}"
+        ),
+        (
+            "  Transformer unseen diagnostic Pearson / top-100 DEG overlap: "
             f"{_format_metric(headline.get('transformer_unseen_pearson'))}"
             f" / {_format_metric(headline.get('transformer_unseen_top100_deg_overlap'))}"
         ),
-        (
-            "  All real models unseen Pearson >= 0.82: "
-            f"{'yes' if headline.get('all_real_models_unseen_pearson_ge_0_82') else 'no'}"
-        ),
-        "",
-        "Readiness modes:",
+        f"  All real unseen-protocol diagnostic scores >= 0.82: {unseen_threshold_text}",
     ]
 
-    if headline.get("transformer_multiseed_num_runs") is not None:
-        lines.insert(
-            8,
-            (
-                "  Transformer multi-seed unseen Pearson / top-100 DEG overlap: "
-                f"{_format_mean_std(headline.get('transformer_multiseed_unseen_pearson_mean'), headline.get('transformer_multiseed_unseen_pearson_std'))}"
-                f" / {_format_mean_std(headline.get('transformer_multiseed_unseen_top100_deg_mean'), headline.get('transformer_multiseed_unseen_top100_deg_std'))}"
-                f" across {headline.get('transformer_multiseed_num_runs')} runs"
-                f" (seeds={_format_seed_list(headline.get('transformer_multiseed_seeds'))})"
-            ),
+    if headline.get("transformer_multiseed_seen_num_runs") is not None:
+        lines.append(
+            "  Transformer multi-seed seen Pearson / top-100 DEG overlap: "
+            f"{_format_mean_std(headline.get('transformer_multiseed_seen_pearson_mean'), headline.get('transformer_multiseed_seen_pearson_std'))}"
+            f" / {_format_mean_std(headline.get('transformer_multiseed_seen_top100_deg_mean'), headline.get('transformer_multiseed_seen_top100_deg_std'))}"
+            f" across {headline.get('transformer_multiseed_seen_num_runs')} runs"
+            f" (seeds={_format_seed_list(headline.get('transformer_multiseed_seen_seeds'))})"
+        )
+    if headline.get("transformer_multiseed_unseen_num_runs") is not None:
+        lines.append(
+            "  Transformer multi-seed unseen diagnostic Pearson / top-100 DEG overlap: "
+            f"{_format_mean_std(headline.get('transformer_multiseed_unseen_pearson_mean'), headline.get('transformer_multiseed_unseen_pearson_std'))}"
+            f" / {_format_mean_std(headline.get('transformer_multiseed_unseen_top100_deg_mean'), headline.get('transformer_multiseed_unseen_top100_deg_std'))}"
+            f" across {headline.get('transformer_multiseed_unseen_num_runs')} runs"
+            f" (seeds={_format_seed_list(headline.get('transformer_multiseed_unseen_seeds'))})"
         )
 
+    lines.extend(["", "Readiness modes:"])
     error_highlights = snapshot.get("transformer_error_highlights", {})
     if error_highlights:
         lines.extend(["", "Transformer error-analysis highlights:"])
@@ -245,7 +316,9 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
         if seen_highlights:
             lines.append(_format_error_highlight_line("seen", seen_highlights))
         if unseen_highlights:
-            lines.append(_format_error_highlight_line("unseen", unseen_highlights))
+            lines.append(
+                _format_error_highlight_line("unseen diagnostic", unseen_highlights)
+            )
 
     for mode_name, ok in snapshot["health_modes"].items():
         lines.append(f"  [{'OK' if ok else 'MISSING'}] {mode_name}")
@@ -257,7 +330,7 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
                 "  "
                 f"{row['display_name']}: "
                 f"seen={_format_metric(row.get('seen_pearson'))}, "
-                f"unseen={_format_metric(row.get('unseen_pearson'))}, "
+                f"unseen-diagnostic={_format_metric(row.get('unseen_pearson'))}, "
                 f"unseen_mse={_format_metric(row.get('unseen_mse'))}"
             )
     else:
@@ -270,7 +343,7 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
                 "  "
                 f"{row['display_name']}: "
                 f"seen={_format_metric(row.get('seen_pearson'))}, "
-                f"unseen={_format_metric(row.get('unseen_pearson'))}"
+                f"unseen-diagnostic={_format_metric(row.get('unseen_pearson'))}"
             )
     else:
         lines.append("  No synthetic model summaries found.")
@@ -286,7 +359,6 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
         lines.append(f"  {label}: {command}")
 
     return "\n".join(lines)
-
 
 def _format_metric(value: Any) -> str:
     if value is None:

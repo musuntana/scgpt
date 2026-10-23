@@ -4,6 +4,7 @@ import hashlib
 import json
 
 import numpy as np
+import pytest
 
 from src.utils.experiment import (
     _fingerprint_file,
@@ -65,6 +66,11 @@ def test_build_run_summary_collects_required_fields(tmp_path):
         json.dumps({"pearson_per_perturbation": 0.35, "overall_mse": 0.1}),
         encoding="utf-8",
     )
+    unseen_metrics_path = output_dir / "unseen_test_metrics.json"
+    unseen_metrics_path.write_text(
+        json.dumps({"pearson_per_perturbation": -1.0, "overall_mse": 999.0}),
+        encoding="utf-8",
+    )
     checkpoint_path = output_dir / "best_model.pt"
     checkpoint_path.write_bytes(b"checkpoint")
 
@@ -79,6 +85,7 @@ def test_build_run_summary_collects_required_fields(tmp_path):
         train_config_path="configs/train.yaml",
         history_path=history_path,
         seen_metrics_path=seen_metrics_path,
+        unseen_metrics_path=unseen_metrics_path,
     )
 
     assert summary["dataset"]["name"] == "scperturb_norman2019"
@@ -90,6 +97,7 @@ def test_build_run_summary_collects_required_fields(tmp_path):
     )
     assert preprocessing_audit["hvg_fit_perturbed_sample_count"] == 1
     assert summary["test_metrics"]["seen_test"]["overall_mse"] == 0.1
+    assert "unseen_test" not in summary["test_metrics"]
     provenance = summary["provenance"]
     assert provenance["schema_version"] == 1
     assert provenance["runtime"]["python"]
@@ -99,6 +107,7 @@ def test_build_run_summary_collects_required_fields(tmp_path):
     assert provenance["outputs"]["checkpoint"]["sha256"] == hashlib.sha256(
         b"checkpoint"
     ).hexdigest()
+    assert provenance["outputs"]["training_protocol"]["status"] == "not_found"
     assert provenance["inputs"]["raw_dataset"]["status"] in {"available", "not_found"}
     split_audit = summary["split"]["audit"]
     assert split_audit["sample_count"] == 1
@@ -182,3 +191,50 @@ def test_git_provenance_is_optional_outside_a_repository(tmp_path):
     assert git["status"] == "unavailable"
     assert git["commit"] is None
     assert git["working_tree"] == "unknown"
+
+
+
+def test_build_run_summary_rejects_mismatched_training_protocol(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    np.savez_compressed(
+        bundle_dir / "arrays.npz",
+        control_expression=np.array([[1.0, 2.0]], dtype=np.float32),
+        target_delta=np.array([[0.1, 0.2]], dtype=np.float32),
+        perturbation_index=np.array([0], dtype=np.int64),
+        sample_ids=np.array(["s1"]),
+    )
+    np.savez_compressed(
+        bundle_dir / "splits.npz",
+        seen_train=np.array([0], dtype=np.int64),
+        seen_val=np.array([], dtype=np.int64),
+        seen_test=np.array([], dtype=np.int64),
+        unseen_train=np.array([], dtype=np.int64),
+        unseen_val=np.array([], dtype=np.int64),
+        unseen_test=np.array([], dtype=np.int64),
+    )
+    (bundle_dir / "metadata.json").write_text(
+        json.dumps({"gene_names": ["g1", "g2"], "perturbation_names": ["p1"]}),
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    (output_dir / "training_protocol.json").write_text(
+        json.dumps({"schema_version": 1, "train_protocol": "unseen"}),
+        encoding="utf-8",
+    )
+    checkpoint_path = output_dir / "best_model.pt"
+    checkpoint_path.write_bytes(b"checkpoint")
+
+    with pytest.raises(ValueError, match="Run summary requested protocol 'seen'"):
+        build_run_summary(
+            bundle_dir=bundle_dir,
+            checkpoint_path=checkpoint_path,
+            output_dir=output_dir,
+            model_type="transformer",
+            split_prefix="seen",
+            data_config_path="configs/data.yaml",
+            model_config_path="configs/model.yaml",
+            train_config_path="configs/train.yaml",
+        )

@@ -84,15 +84,16 @@ MVP 主数据集固定为：
 ```text
 raw / benchmark AnnData
   -> metadata sanity check
-  -> filter low quality cells / genes
-  -> normalize_total
-  -> log1p
-  -> highly_variable_genes
-  -> keep sparse matrix through preprocessing
+  -> cell QC and deterministic per-perturbation cap
+  -> plan seen / unseen sample indices
+  -> fit min-cells gene filter on shared training intersection + controls
+  -> normalize_total on retained genes
+  -> optional log1p
+  -> fit HVGs on the same training/reference subset
+  -> apply one feature mask to all samples
   -> build control mean by batch / cell type
   -> create delta expression targets
-  -> seen / unseen split
-  -> export processed tensors and metadata
+  -> export tensors, split indices, and preprocessing provenance
 ```
 
 核心产物：
@@ -291,11 +292,12 @@ MVP 明确保留两套评估协议：
 2. `unseen perturbation split`
    - 以 perturbation gene 为 group 切分
    - 某个 perturbation 只能出现在 train / val / test 其中一个 split
-   - 用于评估对未见扰动的泛化
+   - 每次训练只评估与训练协议匹配的 test split
+   - 当前模型仍使用 categorical perturbation-ID embedding，因此 unseen 结果只能作为架构限制的诊断，不能宣称零样本泛化
 
 实施顺序：
-- Phase 2 先跑 `seen split`
-- Phase 3 再补 `unseen split`
+- Phase 2 先跑 `seen split`，验证已知扰动上的样本级泛化
+- Phase 3 单独跑 `unseen split`，在模型具备共享扰动表示前不把它解释为有效零样本能力
 
 ## 8. Target Ranking 方案
 

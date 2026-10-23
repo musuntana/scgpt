@@ -93,6 +93,7 @@ The runner:
 - Calls upstream `new_data_process(..., skip_calc_de=True)` and supplies only an all-gene loss mask; it does not compute condition-level DE or dropout metadata.
 - Checks that every perturbation target is present in the loaded GEARS perturbation/GO graph and that the official custom split retains the exact train/val/test condition lists. It stops before training if a condition disappears.
 - Reuses GEARS' official model, graph construction, data loaders and loss function, but uses a small custom training loop and **all-gene validation MSE** for checkpoint selection. The test loader is not used for checkpoint selection.
+- The official co-expression graph builder receives the exact custom training condition list (including shared controls), so held-out perturbation cells are excluded. The runner records the graph CSV SHA-256 and canonical training-condition digest in the run manifest. Sparse expression validation inspects stored values without densifying the full matrix.
 - Evaluates the held-out conditions in **absolute-expression space** and saves `results.json`, `run_manifest.json`, `checkpoint/model.pt`, and the official model config.
 
 This runtime is still diagnostic. Its absolute-expression metrics are **not directly comparable** to this repository's batch/context-aware control-relative delta metrics. A separate target-alignment study and at least three seeds are required before making a model-performance claim. For a multi-seed report, use separate output directories and seeds; do not reuse the same run directory.

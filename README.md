@@ -24,18 +24,25 @@ The categorical perturbation-ID embeddings still do not establish zero-shot gene
 to identities absent from training. See
 [`docs/evaluation-protocol-audit.md`](docs/evaluation-protocol-audit.md).
 
-The next model-architecture step is to benchmark a mature implementation before
-building a new perturbation representation. The current candidate and integration
-constraints are documented in
-[`docs/perturbation-modeling-options.md`](docs/perturbation-modeling-options.md);
-GEARS remains an optional candidate until split and target compatibility are verified.
-The GEARS preflight replays the exact training-only preprocessing, verifies all bundle
-arrays/splits, and exports a GEARS-schema `gears_input.h5ad` with exact cell IDs and split
-labels. An optional runtime runner now uses official GEARS model/data components with a
-custom all-gene validation loop, avoids condition-level DE/dropout preprocessing, and
-checks GO-graph coverage before training. It reports absolute-expression metrics only;
-control-relative delta equivalence remains unverified. See
-[`docs/gears-preflight.md`](docs/gears-preflight.md).
+Two experimental tracks now address the unseen-perturbation limitation without
+changing the default model:
+- **Mature baseline:** the optional GEARS adapter replays training-only preprocessing,
+  verifies source/bundle/split provenance, avoids condition-level DE/dropout leakage,
+  and checks GO-graph coverage before training. Its real-data target equivalence and
+  zero-shot performance remain unverified. See
+  [`docs/gears-preflight.md`](docs/gears-preflight.md).
+- **Shared gene identity prototype:** train with
+  `--perturbation-conditioning shared_gene_identity` to reuse the output-gene embedding
+  as the perturbation representation instead of allocating a dedicated embedding row
+  per perturbation. It requires every perturbation label to exactly match a saved
+  `gene_names` entry; the command fails closed and reports mapping coverage if that
+  condition is not met. This is an experimental architecture, not a validated biological
+  zero-shot result. It still requires real-data evaluation and multiple seeds.
+  See [`docs/unseen-perturbation-representation.md`](docs/unseen-perturbation-representation.md)
+  for the design, exact mapping rules, and evaluation gates.
+
+The current GEARS candidate and integration constraints are documented in
+[`docs/perturbation-modeling-options.md`](docs/perturbation-modeling-options.md).
 
 The previously recorded three-seed Transformer aggregate is 0.830 +/- 0.007 reported
 unseen-split Pearson and 0.985 +/- 0.007 reported unseen-split top-100 DEG overlap; the

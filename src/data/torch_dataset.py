@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from src.data.gene_identity import build_unique_gene_name_index
 from src.data.pairing import load_processed_bundle
 
 
@@ -26,6 +27,26 @@ class ProcessedDataset(Dataset):
         self.perturbation_index = bundle["perturbation_index"]
         self.sample_ids = bundle["sample_ids"]
         self.metadata = bundle["metadata"]
+        gene_names = [str(name) for name in self.metadata["gene_names"]]
+        perturbation_names = [
+            str(name) for name in self.metadata["perturbation_names"]
+        ]
+        gene_to_index, ambiguous_gene_names = build_unique_gene_name_index(gene_names)
+        self.ambiguous_gene_names = sorted(ambiguous_gene_names)
+        self.ambiguous_perturbation_names = [
+            name for name in perturbation_names if name in ambiguous_gene_names
+        ]
+        self.perturbation_gene_indices = np.asarray(
+            [gene_to_index.get(name, -1) for name in perturbation_names],
+            dtype=np.int64,
+        )
+        self.unmapped_perturbation_names = [
+            name
+            for name, gene_index in zip(
+                perturbation_names, self.perturbation_gene_indices, strict=True
+            )
+            if gene_index < 0
+        ]
 
     def __len__(self) -> int:
         return int(len(self.indices))
@@ -39,6 +60,10 @@ class ProcessedDataset(Dataset):
             "perturbation_index": torch.tensor(
                 int(self.perturbation_index[sample_index]), dtype=torch.long
             ),
+            "perturbation_gene_index": torch.tensor(
+                int(self.perturbation_gene_indices[self.perturbation_index[sample_index]]),
+                dtype=torch.long,
+            ),
             "target_delta": torch.from_numpy(self.target_delta[sample_index]).float(),
             "sample_id": self.sample_ids[sample_index],
         }
@@ -50,3 +75,7 @@ class ProcessedDataset(Dataset):
     @property
     def num_perturbations(self) -> int:
         return int(len(self.metadata["perturbation_names"]))
+
+    @property
+    def num_mapped_perturbations(self) -> int:
+        return int(self.num_perturbations - len(self.unmapped_perturbation_names))

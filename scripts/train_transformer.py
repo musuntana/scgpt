@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.pairing import load_processed_bundle
 from src.data.torch_dataset import ProcessedDataset
 from src.evaluation.protocol import matching_test_split
+from src.models.shared_gene_transformer import SharedGeneIdentityTransformer
 from src.models.transformer import TransformerPerturbationModel
 from src.training.trainer import Trainer, TrainerConfig
 from src.utils.config import ensure_keys, load_yaml
@@ -39,6 +40,15 @@ def parse_args() -> argparse.Namespace:
         default="seen",
         choices=["seen", "unseen"],
         help="Which split protocol to train against.",
+    )
+    parser.add_argument(
+        "--perturbation-conditioning",
+        default="categorical",
+        choices=["categorical", "shared_gene_identity"],
+        help=(
+            "categorical uses learned perturbation-ID embeddings; shared_gene_identity "
+            "reuses output-gene embeddings and requires exact perturbation/gene-name matches."
+        ),
     )
     parser.add_argument(
         "--seed",
@@ -83,15 +93,29 @@ def main() -> None:
     )
 
     transformer_cfg = model_config["transformer"]
-    model = TransformerPerturbationModel(
-        num_genes=train_dataset.num_genes,
-        num_perturbations=train_dataset.num_perturbations,
-        d_model=int(transformer_cfg["d_model"]),
-        n_heads=int(transformer_cfg["n_heads"]),
-        n_layers=int(transformer_cfg["n_layers"]),
-        ffn_dim=int(transformer_cfg["ffn_dim"]),
-        dropout=float(transformer_cfg["dropout"]),
-    )
+    model_kwargs = {
+        "num_genes": train_dataset.num_genes,
+        "d_model": int(transformer_cfg["d_model"]),
+        "n_heads": int(transformer_cfg["n_heads"]),
+        "n_layers": int(transformer_cfg["n_layers"]),
+        "ffn_dim": int(transformer_cfg["ffn_dim"]),
+        "dropout": float(transformer_cfg["dropout"]),
+    }
+    if args.perturbation_conditioning == "shared_gene_identity":
+        if train_dataset.num_mapped_perturbations != train_dataset.num_perturbations:
+            examples = ", ".join(train_dataset.unmapped_perturbation_names[:10])
+            raise ValueError(
+                "Shared gene-identity conditioning requires every perturbation name to "
+                "match a saved gene name exactly. "
+                f"Mapped {train_dataset.num_mapped_perturbations}/"
+                f"{train_dataset.num_perturbations}; unmapped examples: {examples or 'none'}."
+            )
+        model = SharedGeneIdentityTransformer(**model_kwargs)
+    else:
+        model = TransformerPerturbationModel(
+            num_perturbations=train_dataset.num_perturbations,
+            **model_kwargs,
+        )
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +129,21 @@ def main() -> None:
                 "checkpoint_selection_split": f"{args.split_prefix}_val",
                 "test_split": test_split_name,
                 "training_seed": int(train_config_payload["train"]["seed"]),
+                "model_type": (
+                    "transformer_shared_gene_identity"
+                    if args.perturbation_conditioning == "shared_gene_identity"
+                    else "transformer"
+                ),
+                "perturbation_representation": args.perturbation_conditioning,
+                "gene_identity_mapping": {
+                    "method": (
+                        "exact_match_to_saved_gene_names"
+                        if args.perturbation_conditioning == "shared_gene_identity"
+                        else "not_used"
+                    ),
+                    "mapped_perturbation_count": train_dataset.num_mapped_perturbations,
+                    "total_perturbation_count": train_dataset.num_perturbations,
+                },
             },
             handle,
             indent=2,

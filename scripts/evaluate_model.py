@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-type",
         required=True,
-        choices=["transformer", "mlp"],
+        choices=["transformer", "transformer_shared_gene_identity", "mlp"],
         help="Which model architecture to load.",
     )
     parser.add_argument("--output-path", required=True, help="Where to write evaluation JSON.")

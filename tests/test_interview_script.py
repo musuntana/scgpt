@@ -95,6 +95,24 @@ def _create_snapshot_backing_files(root: Path) -> None:
     )
     _write_json(
         root,
+        "artifacts/transformer_unseen_norman2019_demo/run_summary.json",
+        """
+{
+  "dataset": {"name": "scperturb_norman2019", "cell_context": "K562"},
+  "split": {"train_protocol": "unseen"},
+  "test_metrics": {
+    "unseen_test": {
+      "pearson_per_perturbation": 0.8243,
+      "mse_per_perturbation": 0.0011,
+      "topk_deg_overlap_20": 0.9296,
+      "topk_deg_overlap_100": 0.9755
+    }
+  }
+}
+""".strip(),
+    )
+    _write_json(
+        root,
         "artifacts/transformer_seen_norman2019_demo/seen_test_error_summary.json",
         """
 {

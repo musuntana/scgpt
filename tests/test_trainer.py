@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from src.models.mlp import MLPBaseline
+from src.models.shared_gene_transformer import SharedGeneIdentityTransformer
 from src.training.trainer import Trainer, TrainerConfig
 
 
@@ -20,6 +21,7 @@ class TinyPerturbationDataset(Dataset):
         return {
             "control_expression": control,
             "perturbation_index": perturbation,
+            "perturbation_gene_index": perturbation,
             "target_delta": target,
         }
 
@@ -63,5 +65,35 @@ def test_trainer_collect_predictions(tmp_path):
 
     predictions, perturbations = trainer.collect_predictions(loader)
 
+    assert predictions.shape == (4, 2)
+    assert perturbations.shape == (4,)
+
+
+def test_trainer_supports_shared_gene_identity_model(tmp_path):
+    dataset = TinyPerturbationDataset()
+    loader = DataLoader(dataset, batch_size=2, shuffle=False)
+    model = SharedGeneIdentityTransformer(
+        num_genes=2,
+        d_model=8,
+        n_heads=2,
+        n_layers=1,
+        ffn_dim=16,
+        dropout=0.0,
+    )
+    trainer = Trainer(
+        model=model,
+        config=TrainerConfig(
+            device="cpu",
+            batch_size=2,
+            epochs=1,
+            learning_rate=1e-2,
+        ),
+        output_dir=tmp_path,
+    )
+
+    history = trainer.fit(loader, loader)
+    predictions, perturbations = trainer.collect_predictions(loader)
+
+    assert len(history) == 1
     assert predictions.shape == (4, 2)
     assert perturbations.shape == (4,)

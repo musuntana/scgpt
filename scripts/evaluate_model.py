@@ -21,6 +21,7 @@ from src.evaluation.error_analysis import (
 )
 from src.evaluation.inference import load_torch_model_for_bundle
 from src.evaluation.metrics import compute_regression_metrics, compute_topk_deg_metrics
+from src.evaluation.protocol import validate_split_matches_training_protocol
 from src.training.trainer import Trainer, TrainerConfig
 from src.utils.config import load_yaml
 from src.utils.logger import get_logger
@@ -89,17 +90,7 @@ def main() -> None:
     if run_summary_path.exists():
         run_summary = read_json(run_summary_path)
         train_protocol = run_summary.get("split", {}).get("train_protocol")
-        requested_protocol = args.split_name.split("_", maxsplit=1)[0]
-        if (
-            train_protocol in {"seen", "unseen"}
-            and requested_protocol in {"seen", "unseen"}
-            and requested_protocol != train_protocol
-        ):
-            raise ValueError(
-                f"Checkpoint was trained with the {train_protocol!r} protocol, but "
-                f"{args.split_name!r} belongs to {requested_protocol!r}. Evaluate the "
-                "matching test split or provide a checkpoint trained for that protocol."
-            )
+        validate_split_matches_training_protocol(train_protocol, args.split_name)
     dataset = ProcessedDataset(args.bundle_dir, args.split_name)
     loader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0)
 

@@ -38,6 +38,8 @@ changing the default model:
   `gene_names` entry; the command fails closed and reports mapping coverage if that
   condition is not met. This is an experimental architecture, not a validated biological
   zero-shot result. It still requires real-data evaluation and multiple seeds.
+  See [`docs/unseen-perturbation-representation.md`](docs/unseen-perturbation-representation.md)
+  for the design, exact mapping rules, and evaluation gates.
 
 The current GEARS candidate and integration constraints are documented in
 [`docs/perturbation-modeling-options.md`](docs/perturbation-modeling-options.md).

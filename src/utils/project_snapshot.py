@@ -11,7 +11,7 @@ from src.utils.project_health import collect_project_health
 
 
 def _display_name(label: str) -> str:
-    prefix = label.split("_seen_")[0]
+    prefix = label.split("_seen_")[0].split("_unseen_")[0]
     mapping = {
         "transformer": "Transformer",
         "mlp": "MLP",
@@ -57,14 +57,25 @@ def _asset_entry(project_root: Path, relative_path: str) -> dict[str, Any]:
     }
 
 
-def _transformer_real_summary(project_root: Path) -> dict[str, Any]:
-    summary_path = project_root / "artifacts/transformer_seen_norman2019_demo/run_summary.json"
+def _transformer_real_summary(
+    project_root: Path,
+    protocol: str = "seen",
+) -> dict[str, Any]:
+    if protocol not in {"seen", "unseen"}:
+        raise ValueError(f"Unsupported protocol: {protocol!r}")
+    summary_path = (
+        project_root
+        / f"artifacts/transformer_{protocol}_norman2019_demo/run_summary.json"
+    )
     if not summary_path.exists():
         return {}
     return read_json(summary_path)
 
 
-def _transformer_real_multiseed_summary(project_root: Path) -> dict[str, Any]:
+def _transformer_real_multiseed_summary(
+    project_root: Path,
+    protocol: str = "unseen",
+) -> dict[str, Any]:
     report_path = project_root / "artifacts/multi_seed_report.json"
     if not report_path.exists():
         return {}
@@ -76,7 +87,7 @@ def _transformer_real_multiseed_summary(project_root: Path) -> dict[str, Any]:
             continue
         if (
             row.get("dataset_name") == "scperturb_norman2019"
-            and row.get("train_protocol") == "seen"
+            and row.get("train_protocol") == protocol
             and row.get("model_type") == "transformer"
         ):
             return row
@@ -84,9 +95,10 @@ def _transformer_real_multiseed_summary(project_root: Path) -> dict[str, Any]:
 
 
 def _transformer_real_error_highlights(project_root: Path) -> dict[str, dict[str, Any]]:
-    artifact_dir = project_root / "artifacts/transformer_seen_norman2019_demo"
     highlights: dict[str, dict[str, Any]] = {}
-    for split_name in ("seen_test", "unseen_test"):
+    for protocol in ("seen", "unseen"):
+        split_name = f"{protocol}_test"
+        artifact_dir = project_root / f"artifacts/transformer_{protocol}_norman2019_demo"
         summary_path = artifact_dir / f"{split_name}_error_summary.json"
         if not summary_path.exists():
             continue
@@ -102,13 +114,17 @@ def build_project_snapshot(project_root: str | Path = ".") -> dict[str, Any]:
     real_rows = _filter_rows(all_rows, "_norman2019_demo")
     synthetic_rows = _filter_rows(all_rows, "_synthetic_demo")
     best_real = _best_row(real_rows)
-    transformer_summary = _transformer_real_summary(root)
-    transformer_multiseed = _transformer_real_multiseed_summary(root)
+    transformer_seen_summary = _transformer_real_summary(root, "seen")
+    transformer_unseen_summary = _transformer_real_summary(root, "unseen")
+    transformer_multiseed = _transformer_real_multiseed_summary(root, "unseen")
     transformer_error_highlights = _transformer_real_error_highlights(root)
-    transformer_unseen = transformer_summary.get("test_metrics", {}).get("unseen_test", {})
-    transformer_seen = transformer_summary.get("test_metrics", {}).get("seen_test", {})
-    bundle = transformer_summary.get("artifacts", {}).get("bundle", {})
-    dataset = transformer_summary.get("dataset", {})
+    transformer_seen = transformer_seen_summary.get("test_metrics", {}).get("seen_test", {})
+    transformer_unseen = transformer_unseen_summary.get("test_metrics", {}).get(
+        "unseen_test", {}
+    )
+    bundle_summary = transformer_seen_summary or transformer_unseen_summary
+    bundle = bundle_summary.get("artifacts", {}).get("bundle", {})
+    dataset = bundle_summary.get("dataset", {})
 
     unseen_values = [
         float(row["unseen_pearson"])
@@ -144,7 +160,7 @@ def build_project_snapshot(project_root: str | Path = ".") -> dict[str, Any]:
             "unseen_top100_deg_std"
         ),
         "all_real_models_unseen_pearson_ge_0_82": (
-            min_real_unseen is not None and min_real_unseen >= 0.82
+            min_real_unseen >= 0.82 if min_real_unseen is not None else None
         ),
     }
 

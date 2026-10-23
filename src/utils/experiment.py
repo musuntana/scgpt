@@ -190,6 +190,9 @@ def _build_provenance(
         },
         "outputs": {
             "checkpoint": _fingerprint_file(checkpoint_path),
+            "training_protocol": _fingerprint_file(
+                Path(checkpoint_path).parent / "training_protocol.json"
+            ),
         },
     }
 

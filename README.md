@@ -7,19 +7,24 @@
 
 [![CI](https://github.com/musuntana/scgpt/actions/workflows/ci.yml/badge.svg)](https://github.com/musuntana/scgpt/actions/workflows/ci.yml)
 
-## Key Results (Norman2019, real data)
+## Key Results (Norman2019, historical artifacts)
 
-| Model | Unseen Pearson | Unseen MSE | Top-100 DEG Overlap |
+| Model | Reported unseen-split Pearson† | Reported unseen-split MSE† | Reported top-100 DEG overlap† |
 | --- | ---: | ---: | ---: |
 | Transformer | 0.824 | 0.0011 | **0.976** |
 | MLP | 0.837 | 0.00085 | — |
 | XGBoost | 0.840 | 0.00084 | — |
 
-All three models generalize to **unseen perturbations** with Pearson ≥ 0.82.
-The Transformer's top-100 DEG overlap of **0.976** confirms that predicted
-expression shifts identify the correct differentially expressed genes at high recall.
-Across 3 real Transformer seeds (`42`, `7`, `21`), unseen Pearson is
-**0.830 +/- 0.007** and unseen top-100 DEG overlap is **0.985 +/- 0.007**.
+**Evaluation caveat:** These values are historical outputs from existing artifacts and are
+retained for traceability. The current categorical perturbation embeddings and pre-split
+HVG selection do not establish zero-shot generalization to perturbation identities absent
+from training. Do not present the current "unseen" results as validated zero-shot metrics
+until the protocol audit is resolved. See
+[`docs/evaluation-protocol-audit.md`](docs/evaluation-protocol-audit.md).
+
+The previously recorded three-seed Transformer aggregate is 0.830 +/- 0.007 reported
+unseen-split Pearson and 0.985 +/- 0.007 reported unseen-split top-100 DEG overlap; the
+same caveat applies.
 
 See [Real Norman2019 results](#real-norman2019-results) for per-split tables and figures.
 
@@ -502,9 +507,9 @@ Transformer top-k DEG overlap (seen_test / unseen_test):
 
 ![Norman2019 inference preview (JUN)](docs/assets/transformer_inference_preview.png)
 
-All three models achieve **Pearson ≥ 0.82** on unseen perturbations, indicating strong generalization.
-The Transformer top-100 DEG overlap of **0.96–0.98** confirms that predicted expression shifts
-identify the correct differentially expressed genes at high recall.
+These are historical metrics from the existing evaluation artifacts, not validated zero-shot
+generalization claims. The categorical perturbation embedding and pre-split feature-selection
+limitations are documented in [the evaluation protocol audit](docs/evaluation-protocol-audit.md).
 
 Transformer multi-seed stability on the real Norman2019 bundle
 (`transformer_seen_norman2019_demo`, `transformer_seen_norman2019_seed7`,

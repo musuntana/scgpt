@@ -287,7 +287,7 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
             f"{_format_metric(headline.get('transformer_unseen_pearson'))}"
             f" / {_format_metric(headline.get('transformer_unseen_top100_deg_overlap'))}"
         ),
-        f"  All real models unseen Pearson >= 0.82: {unseen_threshold_text}",
+        f"  All real unseen-protocol diagnostic scores >= 0.82: {unseen_threshold_text}",
     ]
 
     if headline.get("transformer_multiseed_seen_num_runs") is not None:

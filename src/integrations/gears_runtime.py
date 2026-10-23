@@ -147,7 +147,15 @@ def compute_absolute_expression_metrics(
     if not isinstance(names, list) or not names:
         raise ValueError("Bundle perturbation_names metadata is missing.")
     labels = _as_1d_int_array(bundle.get("perturbation_index"), "perturbation_index")
+    if labels.size == 0 or np.any(labels < 0) or np.any(labels >= len(names)):
+        raise ValueError(
+            "Perturbation indices are empty or outside perturbation_names range."
+        )
     indices = _as_1d_int_array(bundle["splits"][split_name], split_name)
+    if indices.size == 0:
+        raise ValueError(f"{split_name} has no samples to evaluate.")
+    if np.unique(indices).size != indices.size:
+        raise ValueError(f"{split_name} contains duplicate sample indices.")
     control = np.asarray(bundle["control_expression"], dtype=np.float32)
     delta = np.asarray(bundle["target_delta"], dtype=np.float32)
     if (
@@ -156,6 +164,8 @@ def compute_absolute_expression_metrics(
         or control.shape[0] != labels.size
     ):
         raise ValueError("Bundle expression arrays and perturbation indices are inconsistent.")
+    if control.shape[1] < 1:
+        raise ValueError("Bundle expression arrays must contain at least one gene.")
     if not np.all(np.isfinite(control)) or not np.all(np.isfinite(delta)):
         raise ValueError("Bundle control/delta expression arrays contain non-finite values.")
     if np.any(indices < 0) or np.any(indices >= labels.size):
@@ -175,7 +185,8 @@ def compute_absolute_expression_metrics(
                 f"GEARS prediction for {perturbation!r} contains non-finite values."
             )
         group_indices = indices[labels[indices] == perturbation_index]
-        target = targets[group_indices].mean(axis=0)
+        # Accumulate in float64 to avoid overflow when averaging finite float32 values.
+        target = targets[group_indices].mean(axis=0, dtype=np.float64)
         if predicted.shape != target.shape:
             raise ValueError(
                 f"Prediction for {perturbation!r} has {predicted.size} genes; "

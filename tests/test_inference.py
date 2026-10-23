@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
 from src.evaluation.inference import (
     build_gene_comparison_frame,
     build_perturbation_batch,
+    load_torch_model_for_bundle,
     predict_delta_for_batch,
     summarize_perturbation_fit,
 )
@@ -106,3 +109,39 @@ def test_gene_comparison_and_fit_summary_are_consistent():
     ]
     assert fit["pearson"] > 0.9
     assert fit["mse"] >= 0.0
+
+
+def test_checkpoint_loading_requires_matching_bundle_before_model_init(tmp_path):
+    from src.evaluation.protocol import fingerprint_processed_bundle
+
+    bundle_path = tmp_path / "bundle"
+    bundle_path.mkdir()
+    (bundle_path / "arrays.npz").write_bytes(b"arrays")
+    (bundle_path / "splits.npz").write_bytes(b"splits")
+    (bundle_path / "metadata.json").write_bytes(b"metadata")
+    protocol = {
+        "schema_version": 2,
+        "bundle_artifacts_sha256": fingerprint_processed_bundle(bundle_path),
+    }
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "training_protocol.json").write_text(json.dumps(protocol), encoding="utf-8")
+    checkpoint_path = run_dir / "best_model.pt"
+
+    bundle = {
+        "control_expression": np.ones((1, 2), dtype=np.float32),
+        "metadata": {"gene_names": ["G1", "G2"], "perturbation_names": ["P1"]},
+    }
+    with pytest.raises(ValueError, match="bundle_dir is required"):
+        load_torch_model_for_bundle(
+            bundle=bundle, checkpoint_path=checkpoint_path,
+            model_config_path="configs/model.yaml", model_type="transformer",
+        )
+
+    (bundle_path / "metadata.json").write_bytes(b"altered")
+    with pytest.raises(ValueError, match="identity mismatch for metadata.json"):
+        load_torch_model_for_bundle(
+            bundle=bundle, checkpoint_path=checkpoint_path,
+            model_config_path="configs/model.yaml", model_type="transformer",
+            bundle_dir=bundle_path,
+        )

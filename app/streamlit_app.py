@@ -150,6 +150,7 @@ def load_model_cached(
         checkpoint_path=checkpoint_path,
         model_config_path=model_config_path,
         model_type=model_type,
+        bundle_dir=bundle_dir,
     )
 
 

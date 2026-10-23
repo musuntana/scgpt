@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.pairing import load_processed_bundle
 from src.data.torch_dataset import ProcessedDataset
 from src.evaluation.metrics import compute_regression_metrics
-from src.evaluation.protocol import matching_test_split
+from src.evaluation.protocol import fingerprint_processed_bundle, matching_test_split
 from src.models.mlp import MLPBaseline
 from src.models.xgboost_baseline import build_xgboost_baseline
 from src.training.trainer import Trainer, TrainerConfig
@@ -84,6 +84,7 @@ def _train_xgboost(args: argparse.Namespace) -> None:
         train_config_payload.setdefault("train", {})["seed"] = int(args.seed)
     seed_everything(int(train_config_payload["train"]["seed"]))
     bundle = load_processed_bundle(args.bundle_dir)
+    bundle_artifacts_sha256 = fingerprint_processed_bundle(args.bundle_dir)
     splits = bundle["splits"]
     metadata = bundle["metadata"]
     test_split_name = matching_test_split(args.split_prefix, splits)
@@ -110,7 +111,8 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
         json.dump(
             {
-                "schema_version": 1,
+                "schema_version": 2,
+                "bundle_artifacts_sha256": bundle_artifacts_sha256,
                 "train_protocol": args.split_prefix,
                 "checkpoint_selection_split": None,
                 "test_split": test_split_name,
@@ -161,6 +163,7 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     seed_everything(int(train_config_payload["train"]["seed"]))
     trainer_config = TrainerConfig.from_dict(train_config_payload)
     bundle = load_processed_bundle(args.bundle_dir)
+    bundle_artifacts_sha256 = fingerprint_processed_bundle(args.bundle_dir)
     test_split_name = matching_test_split(args.split_prefix, bundle["splits"])
 
     train_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_train")
@@ -190,7 +193,8 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
         json.dump(
             {
-                "schema_version": 1,
+                "schema_version": 2,
+                "bundle_artifacts_sha256": bundle_artifacts_sha256,
                 "train_protocol": args.split_prefix,
                 "checkpoint_selection_split": f"{args.split_prefix}_val",
                 "test_split": test_split_name,

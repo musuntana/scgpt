@@ -119,3 +119,19 @@ run rather than writing an apparently successful result.
 
 These are engineering correctness checks, **not** evidence that unseen
 perturbation generalization has been validated on real Norman2019 data.
+
+
+## Checkpoint and processed-bundle identity
+
+New `training_protocol.json` artifacts (schema 2) now record the SHA-256 hashes
+of the three input files `arrays.npz`, `splits.npz`, and `metadata.json`.
+Both the evaluation CLI and the Streamlit model loader verify these exact bytes
+before loading a checkpoint. A bundle with the same number of genes but a
+different gene order, different perturbation labels, or a changed train/test
+split is therefore refused rather than silently producing a score.
+
+Historical schema-1 artifacts can still be loaded for backward compatibility,
+but their bundle identity is **unverified**, and the evaluation CLI issues a
+warning. Do not treat scores produced from unverified legacy artifacts as
+validated cross-run comparisons. Changing to another processed bundle requires
+retraining or retrieving its matching checkpoint.

@@ -141,6 +141,10 @@ def extract_gears_summary_row(summary: dict, label: str) -> dict | None:
     ):
         return None
 
+    source_hash_text = str(source_hash)
+    input_hash_text = str(input_hash)
+    split_hash_text = str(split_hash)
+
     def finite_metric(key: str) -> float | None:
         value = delta_metrics.get(key)
         if not isinstance(value, (int, float)) or not np.isfinite(float(value)):
@@ -157,12 +161,12 @@ def extract_gears_summary_row(summary: dict, label: str) -> dict | None:
     # seed-dependent graph changes can be surfaced rather than silently splitting
     # each seed into its own group.
     identity = {
-        "source_h5ad_sha256": source_hash,
-        "input_h5ad_sha256": input_hash,
+        "source_h5ad_sha256": source_hash_text,
+        "input_h5ad_sha256": input_hash_text,
         "preflight_manifest_sha256": summary["preflight_manifest_sha256"],
         "preflight_split_pickle_sha256": summary["preflight_split_pickle_sha256"],
         "validated_split_pickle_sha256": summary["validated_split_pickle_sha256"],
-        "split_json_sha256": split_hash,
+        "split_json_sha256": split_hash_text,
         "bundle_artifacts_sha256": bundle_hashes,
         "model_config": model_config,
         "device": summary.get("device"),
@@ -204,7 +208,7 @@ def extract_gears_summary_row(summary: dict, label: str) -> dict | None:
         "model": label,
         "base_model_label": f"gears_unseen_{protocol_id}",
         "model_type": "gears",
-        "dataset_name": f"source-{source_hash[:12]}",
+        "dataset_name": f"source-{source_hash_text[:12]}",
         "train_protocol": "unseen",
         "seed": int(seed),
         "seen_pearson": None,
@@ -216,9 +220,9 @@ def extract_gears_summary_row(summary: dict, label: str) -> dict | None:
         "unseen_top20_deg": None,
         "unseen_top100_deg": None,
         "comparison_protocol_id": protocol_id,
-        "source_h5ad_sha256": source_hash,
-        "input_h5ad_sha256": input_hash,
-        "split_json_sha256": split_hash,
+        "source_h5ad_sha256": source_hash_text,
+        "input_h5ad_sha256": input_hash_text,
+        "split_json_sha256": split_hash_text,
         "comparison_eligible": comparison_eligible,
         "target_equivalence_verified": target_equivalence_verified,
         "run_status": summary.get("status"),

@@ -6,6 +6,8 @@ All notable changes to PerturbScope-GPT are documented here.
 
 ## [Unreleased]
 
+- Added backward-compatible experiment provenance to run summaries: Git state, runtime versions, split/seed details, and SHA-256 fingerprints for data, bundle, configs, and checkpoints.
+- Documented how to compare runs and interpret missing provenance inputs.
 - Fixed the seen-split stratification guard and added deterministic class-balance regression tests.
 - Reduced CI duplication by validating code-relevant pull requests and supporting manual workflow dispatch; docs-only changes no longer trigger CI.
 

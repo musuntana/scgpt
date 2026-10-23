@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 # ---------------------------------------------------------------------------
 
 _TORCH_SUMMARY = {
+    "split": {"train_protocol": "seen"},
     "test_metrics": {
         "seen_test": {
             "pearson_per_perturbation": 0.604,
@@ -40,6 +41,7 @@ _TORCH_SUMMARY = {
 }
 
 _XGBOOST_SUMMARY = {
+    "train_split_prefix": "seen",
     "metrics": {
         "seen_test": {
             "pearson_per_perturbation": 0.618,
@@ -60,9 +62,9 @@ def test_extract_summary_row_torch_layout():
     assert row["base_model_label"] == "transformer_seen_norman2019"
     assert row["model_type"] == "transformer"
     assert abs(row["seen_pearson"] - 0.604) < 1e-6
-    assert abs(row["unseen_pearson"] - 0.824) < 1e-6
+    assert row["unseen_pearson"] is None
     assert abs(row["seen_top20_deg"] - 0.816) < 1e-6
-    assert abs(row["unseen_top100_deg"] - 0.976) < 1e-6
+    assert row["unseen_top100_deg"] is None
 
 
 def test_extract_summary_row_xgboost_layout():
@@ -74,6 +76,24 @@ def test_extract_summary_row_xgboost_layout():
     assert row["seen_top20_deg"] is None  # not present in xgboost summary
 
 
+
+
+
+def test_extract_summary_row_unseen_protocol_does_not_report_seen_metrics():
+    summary = {
+        "split": {"train_protocol": "unseen"},
+        "test_metrics": {
+            "seen_test": {"pearson_per_perturbation": 0.99},
+            "unseen_test": {"pearson_per_perturbation": 0.42},
+        },
+    }
+    row = extract_summary_row(summary, "transformer_unseen_norman2019_demo")
+
+    assert row is not None
+    assert row["seen_pearson"] is None
+    assert row["unseen_pearson"] == 0.42
+
+
 def test_extract_summary_row_returns_none_for_empty_summary():
     assert extract_summary_row({}, "empty") is None
     assert extract_summary_row({"other_key": {}}, "no_metrics") is None
@@ -81,7 +101,10 @@ def test_extract_summary_row_returns_none_for_empty_summary():
 
 def test_extract_summary_row_partial_metrics():
     """Partial metrics dict: missing keys should come back as None, not raise."""
-    summary = {"test_metrics": {"seen_test": {"pearson_per_perturbation": 0.5}}}
+    summary = {
+        "split": {"train_protocol": "seen"},
+        "test_metrics": {"seen_test": {"pearson_per_perturbation": 0.5}},
+    }
     row = extract_summary_row(summary, "partial")
     assert row is not None
     assert abs(row["seen_pearson"] - 0.5) < 1e-6
@@ -149,7 +172,9 @@ def test_scan_skips_subdirs_without_metrics(tmp_path):
 
 def test_shorten_model_label_removes_demo_suffixes():
     assert shorten_model_label("transformer_seen_norman2019_demo") == "transformer"
+    assert shorten_model_label("transformer_unseen_norman2019_demo") == "transformer"
     assert shorten_model_label("mlp_seen_synthetic_demo") == "mlp"
+    assert shorten_model_label("mlp_unseen_synthetic_demo") == "mlp"
     assert shorten_model_label("custom_model") == "custom_model"
 
 

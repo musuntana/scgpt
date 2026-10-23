@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from src.data.gene_identity import build_unique_gene_name_index
 from src.evaluation.metrics import mean_squared_error, pearson_correlation
 from src.models.mlp import MLPBaseline
 from src.models.shared_gene_transformer import SharedGeneIdentityTransformer
@@ -99,7 +100,7 @@ def build_perturbation_batch(
         raise ValueError(f"No samples found for perturbation={perturbation_name}")
 
     gene_names = [str(name) for name in bundle["metadata"]["gene_names"]]
-    gene_index_by_name = {name: index for index, name in enumerate(gene_names)}
+    gene_index_by_name, _ = build_unique_gene_name_index(gene_names)
     return PerturbationInferenceBatch(
         perturbation_name=perturbation_name,
         perturbation_index=perturbation_index,

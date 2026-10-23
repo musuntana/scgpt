@@ -110,6 +110,12 @@ def extend_hvg_mask_with_target_genes(
     for name in targets:
         output[index_by_gene[name]] = True
     after = int(output.sum())
+    panel_names = [gene_names[index] for index in np.flatnonzero(output)]
+    if len(panel_names) != len(set(panel_names)):
+        raise ValueError(
+            "Target-aware feature panel has ambiguous duplicate gene names; "
+            "resolve stable gene identifiers before using shared-gene conditioning."
+        )
     if after > max_panel_genes:
         raise ValueError(
             "Target-aware feature panel exceeds hvg_upper_bound: "
@@ -239,6 +245,7 @@ def select_hvgs_from_training_partitions(
     retain_targets = bool(
         preprocess_config.get("retain_perturbation_target_genes", False)
     )
+    original_hvg_mask = selected_mask.copy()
     target_panel_diagnostics: dict[str, Any] = {}
     if retain_targets:
         selected_mask, target_panel_diagnostics = extend_hvg_mask_with_target_genes(
@@ -248,10 +255,13 @@ def select_hvgs_from_training_partitions(
             max_panel_genes=int(preprocess_config.get("hvg_upper_bound", 800)),
         )
 
-    adata.var["highly_variable"] = selected_mask
+    # Preserve the original training-fitted HVG flag. Added target genes are
+    # selected features, not necessarily highly variable genes.
+    adata.var["highly_variable"] = original_hvg_mask
+    adata.var["scgpt_feature_selected"] = selected_mask
     adata = adata[:, selected_mask].copy()
     adata.uns["scgpt_preprocessing"] = {
-        "schema_version": 1,
+        "schema_version": 2 if retain_targets else 1,
         "hvg_selection_method": "shared_seen_unseen_training_intersection",
         "hvg_fit_perturbed_sample_count": int(shared_train_indices.size),
         "hvg_fit_perturbation_count": int(
@@ -264,7 +274,7 @@ def select_hvgs_from_training_partitions(
         "log1p": log1p_enabled,
         "hvg_gene_count_after_training_filter": int(fit_adata.n_vars),
         "hvg_requested_gene_count": hvg_top_genes,
-        "hvg_selected_gene_count": int(selected_mask.sum()),
+        "hvg_selected_gene_count": int(original_hvg_mask.sum()),
         "retain_perturbation_target_genes": retain_targets,
         **target_panel_diagnostics,
         "val_fraction": float(val_fraction),

@@ -210,6 +210,23 @@ def test_gears_multiseed_report_includes_duplicate_artifact_graph_hashes():
     assert "co-expression graph hash is missing or differs across runs" in row["comparison_blockers"]
 
 
+def test_gears_multiseed_report_requires_graph_hash_for_every_artifact():
+    rows = [_gears_row(seed) for seed in (42, 43, 44)]
+    for row in rows:
+        row["comparison_eligible"] = True
+        row["target_equivalence_verified"] = True
+    rows[1]["coexpression_graph_sha256"] = None
+
+    report = build_multiseed_report(rows, min_runs=2)
+
+    assert len(report) == 1
+    row = report[0]
+    assert row["coexpression_graph_hashes"] == ["7" * 64]
+    assert row["coexpression_graph_consistent"] is False
+    assert row["comparison_eligible"] is False
+    assert "co-expression graph hash is missing or differs across runs" in row["comparison_blockers"]
+
+
 def test_format_multiseed_report_handles_empty_groups():
     report = format_multiseed_report([], artifact_root="artifacts")
     assert "No groups with repeated runs were found." in report

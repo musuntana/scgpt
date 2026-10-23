@@ -277,6 +277,16 @@ Preprocess a dataset bundle:
   --output-dir data/processed/demo_bundle
 ```
 
+The preprocessing CLI now determines both split protocols before gene filtering and HVG
+selection. It fits the retained-gene filter and HVGs using only perturbation samples that
+belong to **both** `seen_train` and `unseen_train`, plus the shared control reference
+population, then applies the selected genes to all samples. This conservative intersection
+keeps either protocol's validation/test perturbation samples out of feature selection while
+preserving one bundle for both evaluations. The bundle's `metadata.json` and each
+`run_summary.json` record the selection method, fit counts, seed, and control-reference
+scope. Bundles generated before this change must be regenerated; their feature selection
+may have used held-out expression.
+
 Download the default `Norman2019` dataset:
 
 ```bash

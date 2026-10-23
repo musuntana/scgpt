@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.data.io import load_anndata
 from src.data.pairing import build_training_bundle, save_processed_bundle
-from src.data.preprocess import prepare_adata
+from src.data.preprocess import prepare_adata, select_hvgs_from_training_partitions
 from src.data.schema import enrich_adata_for_preset, resolve_schema
 from src.utils.config import ensure_keys, load_yaml
 from src.utils.logger import get_logger
@@ -111,6 +111,18 @@ def main() -> None:
         preprocess_config=preprocess_config,
         perturbation_col=schema.perturbation_col,
         control_label=schema.control_label,
+        random_seed=random_seed,
+        select_hvg=False,
+        filter_genes_before_split=False,
+        normalize_expression=False,
+    )
+    prepared = select_hvgs_from_training_partitions(
+        adata=prepared,
+        preprocess_config=preprocess_config,
+        perturbation_col=schema.perturbation_col,
+        control_label=schema.control_label,
+        val_fraction=float(data_config["split"]["val_fraction"]),
+        test_fraction=float(data_config["split"]["test_fraction"]),
         random_seed=random_seed,
     )
     bundle = build_training_bundle(

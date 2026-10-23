@@ -259,6 +259,14 @@ def _load_bundle_overview(bundle_dir: str | Path) -> dict[str, Any]:
             "fallback_reason": None,
         }
 
+    preprocessing_diagnostics = metadata.get("preprocessing_diagnostics")
+    if not isinstance(preprocessing_diagnostics, dict) or not preprocessing_diagnostics:
+        preprocessing_diagnostics = {
+            "schema_version": 1,
+            "status": "not_recorded_legacy_bundle",
+            "hvg_selection_method": "unknown",
+        }
+
     return {
         "bundle_dir": str(bundle_path),
         "num_samples": num_samples,
@@ -266,6 +274,7 @@ def _load_bundle_overview(bundle_dir: str | Path) -> dict[str, Any]:
         "num_perturbations": int(len(metadata["perturbation_names"])),
         "split_sizes": split_sizes,
         "split_diagnostics": split_diagnostics,
+        "preprocessing_diagnostics": preprocessing_diagnostics,
     }
 
 

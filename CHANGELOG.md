@@ -6,6 +6,8 @@ All notable changes to PerturbScope-GPT are documented here.
 
 ## [Unreleased]
 
+- Moved CLI gene filtering and HVG selection to the intersection of seen/unseen training perturbation samples plus the shared control reference; persisted feature-selection provenance in processed bundles and run summaries.
+- Added regression tests proving that perturbation samples held out by either split protocol do not participate in feature selection.
 - Added validation for split fractions, explicit fallback logging for infeasible stratification, and edge-case handling for one-sided validation/test splits.
 - Added sample-coverage, split-disjointness, and unseen-group integrity regression tests.
 - Documented limitations in the current unseen-perturbation evaluation protocol and qualified historical README metrics.

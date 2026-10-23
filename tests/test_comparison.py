@@ -207,6 +207,22 @@ def test_extract_gears_summary_row_rejects_invalid_bundle_artifact_hashes(bundle
 
 
 @pytest.mark.parametrize(
+    "bundle_hashes",
+    [
+        {"arrays.npz": "1" * 64, "splits.npz": "2" * 64},
+        {"arrays.npz": "1" * 64, "metadata.json": "3" * 64},
+        {"splits.npz": "2" * 64, "metadata.json": "3" * 64},
+        {"unrelated.json": "4" * 64},
+    ],
+)
+def test_extract_gears_summary_row_requires_all_bundle_artifacts(bundle_hashes):
+    manifest = _gears_manifest()
+    manifest["bundle_artifacts_sha256"] = bundle_hashes
+
+    assert extract_gears_summary_row(manifest, "gears_runs/seed42") is None
+
+
+@pytest.mark.parametrize(
     "hash_key",
     [
         "bundle_gene_ids_sha256",

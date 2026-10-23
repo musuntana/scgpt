@@ -70,3 +70,30 @@ GEARS' custom split loader expects condition names and its training code consume
 **Stop condition:** Until all gates pass, `PREFLIGHT_ONLY` and `INPUT_ONLY_NO_MODEL_RUN` must remain non-comparable artifacts. Do not place their values next to Transformer/MLP/XGBoost results or claim zero-shot generalization.
 
 Tracking: [Issue #12](https://github.com/musuntana/scgpt/issues/12). Architectural comparison: [perturbation-modeling-options.md](perturbation-modeling-options.md).
+
+
+## 5. Optional train-only GEARS runtime
+
+Once the source-H5AD export succeeds, the repository now includes an optional runner that imports the official GEARS model but does **not** call its standard `GEARS.train()` method. The official trainer's built-in post-training path expects DE/dropout metadata and reports DE-labelled metrics; those assumptions are unsuitable for this unseen split.
+
+Install the official GEARS / PyTorch Geometric stack in a separate environment compatible with your machine. Do not add it to the core `uv.lock`. Then start with a one-epoch smoke run:
+
+```bash
+python scripts/run_gears_baseline.py \
+  --preflight-dir artifacts/gears_preflight_source \
+  --bundle-dir data/processed/norman2019_gears_preflight_bundle \
+  --output-dir artifacts/gears_runs/seed42-smoke \
+  --seed 42 --epochs 1 --batch-size 16 --device cpu
+```
+
+Use a new output directory for every run. On Apple Silicon, CPU is the conservative first smoke-test target; CUDA is available only in a compatible NVIDIA environment. GEARS downloads/uses its official GO annotation resources and may take time on the first run.
+
+The runner:
+- Requires the input H5AD hash and all three bundle-file hashes to match the preflight manifest.
+- Calls upstream `new_data_process(..., skip_calc_de=True)` and supplies only an all-gene loss mask; it does not compute condition-level DE or dropout metadata.
+- Checks that every perturbation target is present in the loaded GEARS perturbation/GO graph and that the official custom split retains the exact train/val/test condition lists. It stops before training if a condition disappears.
+- Reuses GEARS' official model, graph construction, data loaders and loss function, but uses a small custom training loop and **all-gene validation MSE** for checkpoint selection. The test loader is not used for checkpoint selection.
+- The official co-expression graph builder receives the exact custom training condition list (including shared controls), so held-out perturbation cells are excluded. The runner records the graph CSV SHA-256 and canonical training-condition digest in the run manifest. Sparse expression validation inspects stored values without densifying the full matrix.
+- Evaluates the held-out conditions in **absolute-expression space** and saves `results.json`, `run_manifest.json`, `checkpoint/model.pt`, and the official model config.
+
+This runtime is still diagnostic. Its absolute-expression metrics are **not directly comparable** to this repository's batch/context-aware control-relative delta metrics. A separate target-alignment study and at least three seeds are required before making a model-performance claim. For a multi-seed report, use separate output directories and seeds; do not reuse the same run directory.

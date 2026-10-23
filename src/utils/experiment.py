@@ -299,6 +299,14 @@ def build_run_summary(
     train_config = load_yaml(train_config_path)
     if seed is not None:
         train_config.setdefault("train", {})["seed"] = int(seed)
+    protocol_path = Path(output_dir) / "training_protocol.json"
+    if protocol_path.exists():
+        recorded_protocol = load_json(protocol_path).get("train_protocol")
+        if recorded_protocol in {"seen", "unseen"} and recorded_protocol != split_prefix:
+            raise ValueError(
+                f"Run summary requested protocol {split_prefix!r}, but training artifacts "
+                f"record protocol {recorded_protocol!r} in {protocol_path}."
+            )
     checkpoint_metric = str(train_config["train"]["checkpoint_metric"])
 
     history: list[dict[str, Any]] = []

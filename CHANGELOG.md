@@ -6,6 +6,8 @@ All notable changes to PerturbScope-GPT are documented here.
 
 ## [Unreleased]
 
+- Added an optional GEARS runner that skips held-out DE/dropout statistics, uses a custom all-gene validation loop, checks GO-graph/split coverage, and records absolute-expression metrics separately from delta metrics.
+
 - Added optional exact-source GEARS AnnData export: replay train-only preprocessing, verify bundle cell/gene/split/target identity, and record source hashes; upstream all-condition DE preprocessing remains blocked for unseen evaluation.
 
 - Added optional exact-source GEARS AnnData export: reruns training-only preprocessing, validates the saved bundle's cells/genes/splits/targets, and records a source hash; upstream all-condition DE preprocessing remains explicitly blocked for unseen evaluation.

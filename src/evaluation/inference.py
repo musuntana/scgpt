@@ -44,19 +44,23 @@ def build_torch_model(
         raise ValueError(f"Unsupported torch model_type={model_type!r}")
 
     transformer_cfg = model_config["transformer"]
-    transformer_kwargs = {
-        "num_genes": num_genes,
-        "d_model": int(transformer_cfg["d_model"]),
-        "n_heads": int(transformer_cfg["n_heads"]),
-        "n_layers": int(transformer_cfg["n_layers"]),
-        "ffn_dim": int(transformer_cfg["ffn_dim"]),
-        "dropout": float(transformer_cfg["dropout"]),
-    }
     if model_type == "transformer_shared_gene_identity":
-        return SharedGeneIdentityTransformer(**transformer_kwargs)
+        return SharedGeneIdentityTransformer(
+            num_genes=num_genes,
+            d_model=int(transformer_cfg["d_model"]),
+            n_heads=int(transformer_cfg["n_heads"]),
+            n_layers=int(transformer_cfg["n_layers"]),
+            ffn_dim=int(transformer_cfg["ffn_dim"]),
+            dropout=float(transformer_cfg["dropout"]),
+        )
     return TransformerPerturbationModel(
+        num_genes=num_genes,
         num_perturbations=num_perturbations,
-        **transformer_kwargs,
+        d_model=int(transformer_cfg["d_model"]),
+        n_heads=int(transformer_cfg["n_heads"]),
+        n_layers=int(transformer_cfg["n_layers"]),
+        ffn_dim=int(transformer_cfg["ffn_dim"]),
+        dropout=float(transformer_cfg["dropout"]),
     )
 
 

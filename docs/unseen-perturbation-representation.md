@@ -50,6 +50,44 @@ Training refuses to start unless every perturbation maps into the saved gene uni
 
 This coverage gate is consequential: the feature universe is selected by HVG preprocessing, so a perturbation target can be absent from the saved output genes even when it exists in the original source AnnData. The prototype is not intended to claim coverage for targets outside that universe.
 
+### Optional target-aware training-derived feature panel
+
+For a newly generated experimental bundle, opt in to retaining **known target
+identities** alongside the HVGs fitted on training cells:
+
+```bash
+uv run python scripts/preprocess_data.py \
+  --input-path data/raw/NormanWeissman2019_filtered.h5ad \
+  --output-dir data/processed/norman2019_shared_target_panel \
+  --retain-perturbation-target-genes
+uv run python scripts/inspect_gene_identity_coverage.py \
+  --bundle-dir data/processed/norman2019_shared_target_panel \
+  --output-json artifacts/shared-gene-identity/target-panel-coverage.json
+```
+
+This remains **off by default** to avoid silently changing historical,
+categorical-ID, or GEARS experiments. The HVG ranking and gene-detection filter
+are still fitted only with training partitions plus controls. All target labels
+(including targets designated for held-out perturbation groups) are used only
+as a **known transductive candidate identity list**, never for their held-out
+expression values. Therefore this is a *known-unseen-target* protocol, **not**
+a claim that the system generalizes to previously unknown target names.
+
+If any target is absent from the training-filtered gene universe, duplicates
+create an ambiguous mapping, or the union of HVGs and target genes exceeds
+`preprocess.hvg_upper_bound`, preprocessing stops with a concrete error;
+it neither guesses gene aliases nor silently drops genes. The final selected
+gene panel may exceed `hvg_top_genes`, so record
+`hvg_selected_gene_count`, `target_genes_added_to_hvgs` and
+`feature_panel_gene_count` from the saved preprocessing diagnostics.
+Use a **new output directory**, re-train every compared model on exactly the
+same bundle, and do not compare results to a previous 512-gene protocol
+without identifying the changed gene universe.
+
+Only real Norman2019 data can determine whether the exact naming and
+training-only filtering conditions are satisfied.
+
+
 ## Evaluation protocol
 
 Use a freshly regenerated bundle whose preprocessing diagnostics record training-only filtering/HVG selection. For the first run, use `--split-prefix unseen` and a unique output directory. Record the generated `training_protocol.json`, checkpoint, metrics, data hashes, and mapping coverage.

@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 
+from src.data.gene_identity import build_unique_gene_name_index
 from src.data.pairing import create_split_indices
 from src.utils.logger import get_logger
 
@@ -66,6 +67,70 @@ def cap_cells_per_perturbation(
     subset = adata[selected_indices].copy()
     LOGGER.info("Subsampled to %s cells for local-first iteration.", subset.n_obs)
     return subset
+
+
+def extend_hvg_mask_with_target_genes(
+    *,
+    gene_names: list[str],
+    hvg_mask: np.ndarray,
+    perturbation_names: list[str],
+    max_panel_genes: int,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Add known target identities to a training-fitted HVG mask, without heldout expression.
+
+    Target labels are metadata available before predicting unseen perturbations.
+    Fail closed if any label is missing/ambiguous after training-only gene filtering,
+    or if the resulting feature panel would exceed its explicit memory budget.
+    """
+    selected = np.asarray(hvg_mask, dtype=bool)
+    if selected.ndim != 1 or selected.shape[0] != len(gene_names):
+        raise ValueError("HVG mask and available gene names have inconsistent shapes.")
+    if not selected.any():
+        raise ValueError("The training-fitted HVG mask is empty.")
+    if max_panel_genes < 1:
+        raise ValueError("hvg_upper_bound must be positive for target retention.")
+
+    index_by_gene, ambiguous = build_unique_gene_name_index(gene_names)
+    targets = sorted(set(perturbation_names))
+    if not targets:
+        raise ValueError("Cannot retain target genes without perturbation identities.")
+    missing = sorted(name for name in targets if name not in index_by_gene)
+    if missing:
+        ambiguous_targets = sorted(set(missing) & ambiguous)
+        raise ValueError(
+            "Target-gene retention requires exact, unique gene names after "
+            "training-only filtering. "
+            f"Unmapped targets ({len(missing)}): {missing[:10]}; "
+            f"ambiguous targets: {ambiguous_targets[:10]}. "
+            "Inspect gene symbols or filtering; do not guess aliases."
+        )
+
+    output = selected.copy()
+    before = int(output.sum())
+    for name in targets:
+        output[index_by_gene[name]] = True
+    after = int(output.sum())
+    panel_names = [gene_names[index] for index in np.flatnonzero(output)]
+    if len(panel_names) != len(set(panel_names)):
+        raise ValueError(
+            "Target-aware feature panel has ambiguous duplicate gene names; "
+            "resolve stable gene identifiers before using shared-gene conditioning."
+        )
+    if after > max_panel_genes:
+        raise ValueError(
+            "Target-aware feature panel exceeds hvg_upper_bound: "
+            f"{after} genes (HVGs={before}, targets={len(targets)}, "
+            f"upper_bound={max_panel_genes}). Increase the explicit bound or "
+            "change the preprocessing design; no target will be silently dropped."
+        )
+    return output, {
+        "known_target_gene_count": len(targets),
+        "target_genes_added_to_hvgs": after - before,
+        "target_genes_retained": len(targets),
+        "feature_panel_gene_count": after,
+        "target_selection_scope": "known_perturbation_names_only",
+        "heldout_perturbation_expression_used_for_target_retention": False,
+    }
 
 
 def select_hvgs_from_training_partitions(
@@ -177,10 +242,26 @@ def select_hvgs_from_training_partitions(
             "Training-only HVG selection produced an empty or invalid gene mask."
         )
 
-    adata.var["highly_variable"] = selected_mask
+    retain_targets = bool(
+        preprocess_config.get("retain_perturbation_target_genes", False)
+    )
+    original_hvg_mask = selected_mask.copy()
+    target_panel_diagnostics: dict[str, Any] = {}
+    if retain_targets:
+        selected_mask, target_panel_diagnostics = extend_hvg_mask_with_target_genes(
+            gene_names=adata.var_names.astype(str).tolist(),
+            hvg_mask=selected_mask,
+            perturbation_names=perturbation_names,
+            max_panel_genes=int(preprocess_config.get("hvg_upper_bound", 800)),
+        )
+
+    # Preserve the original training-fitted HVG flag. Added target genes are
+    # selected features, not necessarily highly variable genes.
+    adata.var["highly_variable"] = original_hvg_mask
+    adata.var["scgpt_feature_selected"] = selected_mask
     adata = adata[:, selected_mask].copy()
     adata.uns["scgpt_preprocessing"] = {
-        "schema_version": 1,
+        "schema_version": 2 if retain_targets else 1,
         "hvg_selection_method": "shared_seen_unseen_training_intersection",
         "hvg_fit_perturbed_sample_count": int(shared_train_indices.size),
         "hvg_fit_perturbation_count": int(
@@ -193,7 +274,9 @@ def select_hvgs_from_training_partitions(
         "log1p": log1p_enabled,
         "hvg_gene_count_after_training_filter": int(fit_adata.n_vars),
         "hvg_requested_gene_count": hvg_top_genes,
-        "hvg_selected_gene_count": int(selected_mask.sum()),
+        "hvg_selected_gene_count": int(original_hvg_mask.sum()),
+        "retain_perturbation_target_genes": retain_targets,
+        **target_panel_diagnostics,
         "val_fraction": float(val_fraction),
         "test_fraction": float(test_fraction),
         "split_seed": int(random_seed),

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from src.evaluation.inference import (
     build_gene_comparison_frame,
     build_perturbation_batch,
+    predict_delta_for_batch,
     summarize_perturbation_fit,
 )
+from src.models.shared_gene_transformer import SharedGeneIdentityTransformer
 
 
 def test_build_perturbation_batch_aggregates_matching_rows():
@@ -33,6 +36,36 @@ def test_build_perturbation_batch_aggregates_matching_rows():
     np.testing.assert_allclose(
         batch.observed_delta_mean, np.array([0.2, 0.3], dtype=np.float32)
     )
+
+
+def test_shared_gene_identity_inference_uses_exact_gene_mapping():
+    bundle = {
+        "control_expression": np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
+        "target_delta": np.array([[0.1, 0.2], [0.3, 0.4]], dtype=np.float32),
+        "perturbation_index": np.array([0, 1], dtype=np.int64),
+        "metadata": {
+            "gene_names": ["p1", "g2"],
+            "perturbation_names": ["p1", "p2"],
+        },
+    }
+    model = SharedGeneIdentityTransformer(
+        num_genes=2,
+        d_model=8,
+        n_heads=2,
+        n_layers=1,
+        ffn_dim=16,
+        dropout=0.0,
+    )
+
+    mapped_batch = build_perturbation_batch(bundle, "p1")
+    assert mapped_batch.perturbation_gene_index == 0
+    prediction = predict_delta_for_batch(model, mapped_batch)
+    assert prediction.shape == (2,)
+
+    unmapped_batch = build_perturbation_batch(bundle, "p2")
+    assert unmapped_batch.perturbation_gene_index == -1
+    with pytest.raises(ValueError, match="does not exactly match a saved gene name"):
+        predict_delta_for_batch(model, unmapped_batch)
 
 
 def test_gene_comparison_and_fit_summary_are_consistent():

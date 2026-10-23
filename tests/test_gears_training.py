@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from types import SimpleNamespace
 from typing import Any
 
@@ -8,8 +9,69 @@ import torch
 
 from scripts.run_gears_baseline import (
     train_with_all_gene_validation,
+    validate_bundle_artifact_hashes,
     validate_runtime_config,
 )
+
+
+def _write_bundle_artifacts(tmp_path):
+    hashes = {}
+    for filename, payload in (
+        ("arrays.npz", b"arrays"),
+        ("splits.npz", b"splits"),
+        ("metadata.json", b"metadata"),
+    ):
+        (tmp_path / filename).write_bytes(payload)
+        hashes[filename] = hashlib.sha256(payload).hexdigest()
+    return hashes
+
+
+def test_bundle_artifact_hash_validator_accepts_complete_manifest(tmp_path):
+    hashes = _write_bundle_artifacts(tmp_path)
+
+    validate_bundle_artifact_hashes(tmp_path, hashes)
+
+
+@pytest.mark.parametrize("missing", ["arrays.npz", "splits.npz", "metadata.json"])
+def test_bundle_artifact_hash_validator_rejects_missing_manifest_entry(tmp_path, missing):
+    hashes = _write_bundle_artifacts(tmp_path)
+    hashes.pop(missing)
+
+    with pytest.raises(ValueError, match="must contain exactly"):
+        validate_bundle_artifact_hashes(tmp_path, hashes)
+
+
+def test_bundle_artifact_hash_validator_rejects_unexpected_manifest_entry(tmp_path):
+    hashes = _write_bundle_artifacts(tmp_path)
+    hashes["unrelated.json"] = "0" * 64
+
+    with pytest.raises(ValueError, match="must contain exactly"):
+        validate_bundle_artifact_hashes(tmp_path, hashes)
+
+
+@pytest.mark.parametrize("invalid_hash", [None, "", "A" * 64, "not-a-hash"])
+def test_bundle_artifact_hash_validator_rejects_malformed_hash(tmp_path, invalid_hash):
+    hashes = _write_bundle_artifacts(tmp_path)
+    hashes["arrays.npz"] = invalid_hash
+
+    with pytest.raises(ValueError, match="valid SHA-256"):
+        validate_bundle_artifact_hashes(tmp_path, hashes)
+
+
+def test_bundle_artifact_hash_validator_rejects_changed_artifact(tmp_path):
+    hashes = _write_bundle_artifacts(tmp_path)
+    hashes["arrays.npz"] = "0" * 64
+
+    with pytest.raises(ValueError, match="hash changed"):
+        validate_bundle_artifact_hashes(tmp_path, hashes)
+
+
+def test_bundle_artifact_hash_validator_rejects_missing_file(tmp_path):
+    hashes = _write_bundle_artifacts(tmp_path)
+    (tmp_path / "splits.npz").unlink()
+
+    with pytest.raises(FileNotFoundError, match="splits.npz"):
+        validate_bundle_artifact_hashes(tmp_path, hashes)
 
 
 class _Batch:

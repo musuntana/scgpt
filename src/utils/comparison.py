@@ -148,6 +148,7 @@ def extract_gears_summary_row(summary: dict, label: str) -> dict | None:
         )
         or not isinstance(bundle_hashes, dict)
         or not bundle_hashes
+        or not {"arrays.npz", "splits.npz", "metadata.json"}.issubset(bundle_hashes)
         or any(
             not isinstance(name, str)
             or not name.strip()

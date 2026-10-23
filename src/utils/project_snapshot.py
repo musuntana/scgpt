@@ -248,6 +248,12 @@ def write_project_snapshot(snapshot: dict[str, Any], output_path: str | Path) ->
 def format_project_snapshot(snapshot: dict[str, Any]) -> str:
     """Render a human-readable project snapshot for local CLI use."""
     headline = snapshot["headline"]
+    unseen_threshold = headline.get("all_real_models_unseen_pearson_ge_0_82")
+    if unseen_threshold is None:
+        unseen_threshold_text = "not established (no protocol-matched unseen results)"
+    else:
+        unseen_threshold_text = "yes" if unseen_threshold else "no"
+
     lines = [
         "PerturbScope-GPT snapshot",
         f"Project root: {snapshot['project_root']}",
@@ -262,35 +268,46 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
             f" | perturbations={headline.get('num_perturbations') or 'unknown'}"
         ),
         (
-            "  Best real unseen Pearson: "
+            "  Best real seen-protocol Pearson: "
+            f"{headline.get('best_real_seen_model') or 'n/a'}"
+            f" ({_format_metric(headline.get('best_real_seen_pearson'))})"
+        ),
+        (
+            "  Best real unseen-protocol diagnostic Pearson: "
             f"{headline.get('best_real_unseen_model') or 'n/a'}"
             f" ({_format_metric(headline.get('best_real_unseen_pearson'))})"
         ),
         (
-            "  Transformer unseen Pearson / top-100 DEG overlap: "
+            "  Transformer seen Pearson / top-100 DEG overlap: "
+            f"{_format_metric(headline.get('transformer_seen_pearson'))}"
+            f" / {_format_metric(headline.get('transformer_seen_top100_deg_overlap'))}"
+        ),
+        (
+            "  Transformer unseen diagnostic Pearson / top-100 DEG overlap: "
             f"{_format_metric(headline.get('transformer_unseen_pearson'))}"
             f" / {_format_metric(headline.get('transformer_unseen_top100_deg_overlap'))}"
         ),
-        (
-            "  All real models unseen Pearson >= 0.82: "
-            f"{'yes' if headline.get('all_real_models_unseen_pearson_ge_0_82') else 'no'}"
-        ),
-        "",
-        "Readiness modes:",
+        f"  All real models unseen Pearson >= 0.82: {unseen_threshold_text}",
     ]
 
-    if headline.get("transformer_multiseed_num_runs") is not None:
-        lines.insert(
-            8,
-            (
-                "  Transformer multi-seed unseen Pearson / top-100 DEG overlap: "
-                f"{_format_mean_std(headline.get('transformer_multiseed_unseen_pearson_mean'), headline.get('transformer_multiseed_unseen_pearson_std'))}"
-                f" / {_format_mean_std(headline.get('transformer_multiseed_unseen_top100_deg_mean'), headline.get('transformer_multiseed_unseen_top100_deg_std'))}"
-                f" across {headline.get('transformer_multiseed_num_runs')} runs"
-                f" (seeds={_format_seed_list(headline.get('transformer_multiseed_seeds'))})"
-            ),
+    if headline.get("transformer_multiseed_seen_num_runs") is not None:
+        lines.append(
+            "  Transformer multi-seed seen Pearson / top-100 DEG overlap: "
+            f"{_format_mean_std(headline.get('transformer_multiseed_seen_pearson_mean'), headline.get('transformer_multiseed_seen_pearson_std'))}"
+            f" / {_format_mean_std(headline.get('transformer_multiseed_seen_top100_deg_mean'), headline.get('transformer_multiseed_seen_top100_deg_std'))}"
+            f" across {headline.get('transformer_multiseed_seen_num_runs')} runs"
+            f" (seeds={_format_seed_list(headline.get('transformer_multiseed_seen_seeds'))})"
+        )
+    if headline.get("transformer_multiseed_unseen_num_runs") is not None:
+        lines.append(
+            "  Transformer multi-seed unseen diagnostic Pearson / top-100 DEG overlap: "
+            f"{_format_mean_std(headline.get('transformer_multiseed_unseen_pearson_mean'), headline.get('transformer_multiseed_unseen_pearson_std'))}"
+            f" / {_format_mean_std(headline.get('transformer_multiseed_unseen_top100_deg_mean'), headline.get('transformer_multiseed_unseen_top100_deg_std'))}"
+            f" across {headline.get('transformer_multiseed_unseen_num_runs')} runs"
+            f" (seeds={_format_seed_list(headline.get('transformer_multiseed_unseen_seeds'))})"
         )
 
+    lines.extend(["", "Readiness modes:"])
     error_highlights = snapshot.get("transformer_error_highlights", {})
     if error_highlights:
         lines.extend(["", "Transformer error-analysis highlights:"])
@@ -299,7 +316,9 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
         if seen_highlights:
             lines.append(_format_error_highlight_line("seen", seen_highlights))
         if unseen_highlights:
-            lines.append(_format_error_highlight_line("unseen", unseen_highlights))
+            lines.append(
+                _format_error_highlight_line("unseen diagnostic", unseen_highlights)
+            )
 
     for mode_name, ok in snapshot["health_modes"].items():
         lines.append(f"  [{'OK' if ok else 'MISSING'}] {mode_name}")
@@ -311,7 +330,7 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
                 "  "
                 f"{row['display_name']}: "
                 f"seen={_format_metric(row.get('seen_pearson'))}, "
-                f"unseen={_format_metric(row.get('unseen_pearson'))}, "
+                f"unseen-diagnostic={_format_metric(row.get('unseen_pearson'))}, "
                 f"unseen_mse={_format_metric(row.get('unseen_mse'))}"
             )
     else:
@@ -324,7 +343,7 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
                 "  "
                 f"{row['display_name']}: "
                 f"seen={_format_metric(row.get('seen_pearson'))}, "
-                f"unseen={_format_metric(row.get('unseen_pearson'))}"
+                f"unseen-diagnostic={_format_metric(row.get('unseen_pearson'))}"
             )
     else:
         lines.append("  No synthetic model summaries found.")
@@ -340,7 +359,6 @@ def format_project_snapshot(snapshot: dict[str, Any]) -> str:
         lines.append(f"  {label}: {command}")
 
     return "\n".join(lines)
-
 
 def _format_metric(value: Any) -> str:
     if value is None:

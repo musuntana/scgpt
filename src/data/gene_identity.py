@@ -32,7 +32,7 @@ def build_gene_identity_coverage_report(
         ("gene_names", gene_names),
         ("perturbation_names", perturbation_names),
     ):
-        if not values:
+        if len(values) == 0:
             raise ValueError(f"{label} must be a non-empty sequence.")
         if any(not isinstance(value, str) or not value.strip() for value in values):
             raise ValueError(f"{label} must contain only non-empty strings.")

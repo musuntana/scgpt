@@ -33,7 +33,18 @@ def test_build_run_summary_collects_required_fields(tmp_path):
         unseen_test=np.array([], dtype=np.int64),
     )
     (bundle_dir / "metadata.json").write_text(
-        json.dumps({"gene_names": ["g1", "g2"], "perturbation_names": ["p1"]}),
+        json.dumps(
+            {
+                "gene_names": ["g1", "g2"],
+                "perturbation_names": ["p1"],
+                "preprocessing_diagnostics": {
+                    "schema_version": 1,
+                    "hvg_selection_method": "shared_seen_unseen_training_intersection",
+                    "hvg_fit_perturbed_sample_count": 1,
+                    "hvg_fit_control_sample_count": 10,
+                },
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -73,6 +84,11 @@ def test_build_run_summary_collects_required_fields(tmp_path):
     assert summary["dataset"]["name"] == "scperturb_norman2019"
     assert summary["validation"]["best_epoch"] == 2
     assert summary["artifacts"]["bundle"]["num_samples"] == 1
+    preprocessing_audit = summary["artifacts"]["bundle"]["preprocessing_diagnostics"]
+    assert preprocessing_audit["hvg_selection_method"] == (
+        "shared_seen_unseen_training_intersection"
+    )
+    assert preprocessing_audit["hvg_fit_perturbed_sample_count"] == 1
     assert summary["test_metrics"]["seen_test"]["overall_mse"] == 0.1
     provenance = summary["provenance"]
     assert provenance["schema_version"] == 1

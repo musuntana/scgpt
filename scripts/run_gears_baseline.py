@@ -6,6 +6,7 @@ import copy
 import hashlib
 import importlib.metadata
 import json
+import math
 import platform
 import pickle
 import random
@@ -54,6 +55,52 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--coexpress-threshold", type=float, default=0.4)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     return parser.parse_args()
+
+
+def validate_runtime_config(
+    *,
+    seed: int,
+    epochs: int,
+    batch_size: int,
+    test_batch_size: int,
+    learning_rate: float,
+    weight_decay: float,
+    hidden_size: int,
+    num_go_gnn_layers: int,
+    num_gene_gnn_layers: int,
+    decoder_hidden_size: int,
+    num_similar_genes_go_graph: int,
+    num_similar_genes_co_express_graph: int,
+    coexpress_threshold: float,
+    device_choice: str,
+) -> None:
+    """Reject invalid run settings before loading data or initializing GEARS."""
+    if not 0 <= seed < 2**32:
+        raise ValueError("seed must be an integer in [0, 2**32).")
+    if epochs < 1:
+        raise ValueError("epochs must be positive.")
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive.")
+    if test_batch_size < 1:
+        raise ValueError("test_batch_size must be positive.")
+    if not math.isfinite(learning_rate) or learning_rate <= 0:
+        raise ValueError("learning_rate must be finite and positive.")
+    if not math.isfinite(weight_decay) or weight_decay < 0:
+        raise ValueError("weight_decay must be finite and non-negative.")
+    for name, value in (
+        ("hidden_size", hidden_size),
+        ("decoder_hidden_size", decoder_hidden_size),
+        ("num_go_gnn_layers", num_go_gnn_layers),
+        ("num_gene_gnn_layers", num_gene_gnn_layers),
+        ("num_similar_genes_go_graph", num_similar_genes_go_graph),
+        ("num_similar_genes_co_express_graph", num_similar_genes_co_express_graph),
+    ):
+        if value < 1:
+            raise ValueError(f"{name} must be positive.")
+    if not math.isfinite(coexpress_threshold) or not 0 <= coexpress_threshold < 1:
+        raise ValueError("coexpress_threshold must be finite and in [0, 1).")
+    if device_choice not in {"auto", "cpu", "cuda"}:
+        raise ValueError("device_choice must be one of: auto, cpu, cuda.")
 
 
 def file_sha256(path: str | Path) -> str:
@@ -193,9 +240,27 @@ def run_gears_baseline(
     coexpress_threshold: float = 0.4,
     device_choice: str = "auto",
 ) -> dict[str, Any]:
+    validate_runtime_config(
+        seed=seed,
+        epochs=epochs,
+        batch_size=batch_size,
+        test_batch_size=test_batch_size,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        hidden_size=hidden_size,
+        num_go_gnn_layers=num_go_gnn_layers,
+        num_gene_gnn_layers=num_gene_gnn_layers,
+        decoder_hidden_size=decoder_hidden_size,
+        num_similar_genes_go_graph=num_similar_genes_go_graph,
+        num_similar_genes_co_express_graph=num_similar_genes_co_express_graph,
+        coexpress_threshold=coexpress_threshold,
+        device_choice=device_choice,
+    )
     preflight = Path(preflight_dir)
     bundle_path = Path(bundle_dir)
     output = Path(output_dir)
+    if output.exists() and not output.is_dir():
+        raise NotADirectoryError(f"Output path exists and is not a directory: {output}")
     if output.exists() and any(output.iterdir()):
         raise FileExistsError(
             f"Refusing to overwrite non-empty output directory {output}; choose a new path."

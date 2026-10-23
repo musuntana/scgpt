@@ -6,7 +6,10 @@ from typing import Any
 import pytest
 import torch
 
-from scripts.run_gears_baseline import train_with_all_gene_validation
+from scripts.run_gears_baseline import (
+    train_with_all_gene_validation,
+    validate_runtime_config,
+)
 
 
 class _Batch:
@@ -78,6 +81,63 @@ def _train(
         learning_rate=0.1,
         weight_decay=0.0,
     )
+
+
+def _valid_runtime_config() -> dict[str, Any]:
+    return {
+        "seed": 42,
+        "epochs": 20,
+        "batch_size": 32,
+        "test_batch_size": 128,
+        "learning_rate": 1e-3,
+        "weight_decay": 5e-4,
+        "hidden_size": 64,
+        "num_go_gnn_layers": 1,
+        "num_gene_gnn_layers": 1,
+        "decoder_hidden_size": 16,
+        "num_similar_genes_go_graph": 20,
+        "num_similar_genes_co_express_graph": 20,
+        "coexpress_threshold": 0.4,
+        "device_choice": "auto",
+    }
+
+
+def test_runtime_config_accepts_default_settings() -> None:
+    validate_runtime_config(**_valid_runtime_config())
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"seed": -1}, "seed"),
+        ({"seed": 2**32}, "seed"),
+        ({"epochs": 0}, "epochs"),
+        ({"batch_size": 0}, "batch_size"),
+        ({"test_batch_size": 0}, "test_batch_size"),
+        ({"learning_rate": 0.0}, "learning_rate"),
+        ({"learning_rate": float("nan")}, "learning_rate"),
+        ({"weight_decay": -0.1}, "weight_decay"),
+        ({"weight_decay": float("inf")}, "weight_decay"),
+        ({"hidden_size": 0}, "hidden_size"),
+        ({"num_go_gnn_layers": 0}, "num_go_gnn_layers"),
+        ({"num_gene_gnn_layers": 0}, "num_gene_gnn_layers"),
+        ({"decoder_hidden_size": 0}, "decoder_hidden_size"),
+        ({"num_similar_genes_go_graph": 0}, "num_similar_genes_go_graph"),
+        ({"num_similar_genes_co_express_graph": 0}, "num_similar_genes_co_express_graph"),
+        ({"coexpress_threshold": -0.1}, "coexpress_threshold"),
+        ({"coexpress_threshold": 1.0}, "coexpress_threshold"),
+        ({"coexpress_threshold": float("nan")}, "coexpress_threshold"),
+        ({"device_choice": "mps"}, "device_choice"),
+    ],
+)
+def test_runtime_config_rejects_invalid_settings(
+    override: dict[str, Any],
+    message: str,
+) -> None:
+    config = _valid_runtime_config()
+    config.update(override)
+    with pytest.raises(ValueError, match=message):
+        validate_runtime_config(**config)
 
 
 def test_custom_trainer_restores_lowest_validation_checkpoint() -> None:

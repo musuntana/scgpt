@@ -29,9 +29,12 @@ building a new perturbation representation. The current candidate and integratio
 constraints are documented in
 [`docs/perturbation-modeling-options.md`](docs/perturbation-modeling-options.md);
 GEARS remains an optional candidate until split and target compatibility are verified.
-The first code-level gate is now available: [`docs/gears-preflight.md`](docs/gears-preflight.md)
-describes the group-disjoint GEARS custom split exporter, data identity checks, and
-unverified conditions before any real baseline run. It requires no new dependencies.
+The GEARS preflight now also supports a source-H5AD path that replays the exact
+training-only preprocessing, verifies all bundle arrays/splits, and exports a GEARS-schema
+`gears_input.h5ad` with exact cell IDs and split labels. This remains an input-only artifact:
+the official default GEARS preprocessing calculates DE/dropout metadata across held-out
+conditions, so a leakage-audited train-only runtime is still required before training.
+See [`docs/gears-preflight.md`](docs/gears-preflight.md).
 
 The previously recorded three-seed Transformer aggregate is 0.830 +/- 0.007 reported
 unseen-split Pearson and 0.985 +/- 0.007 reported unseen-split top-100 DEG overlap; the

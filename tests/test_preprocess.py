@@ -34,6 +34,10 @@ def test_hvg_selection_excludes_heldout_perturbation_samples(monkeypatch):
     adata = _make_adata()
     fitted_sample_ids: list[str] = []
 
+    def fake_filter_genes(fit_adata, min_cells: int) -> None:
+        expressed_cells = np.count_nonzero(np.asarray(fit_adata.X), axis=0)
+        fit_adata._inplace_subset_var(expressed_cells >= min_cells)
+
     def fake_highly_variable_genes(fit_adata, n_top_genes: int) -> None:
         fitted_sample_ids.extend(fit_adata.obs_names.astype(str).tolist())
         variances = np.var(np.asarray(fit_adata.X), axis=0)
@@ -45,7 +49,10 @@ def test_hvg_selection_excludes_heldout_perturbation_samples(monkeypatch):
         preprocess,
         "_require_scanpy",
         lambda: SimpleNamespace(
-            pp=SimpleNamespace(highly_variable_genes=fake_highly_variable_genes)
+            pp=SimpleNamespace(
+                filter_genes=fake_filter_genes,
+                highly_variable_genes=fake_highly_variable_genes,
+            )
         ),
     )
 

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 import numpy as np
 
-from src.utils.experiment import build_run_summary, write_run_summary
+from src.utils.experiment import (
+    _fingerprint_file,
+    _git_provenance,
+    build_run_summary,
+    write_run_summary,
+)
 
 
 def test_build_run_summary_collects_required_fields(tmp_path):
@@ -68,6 +74,16 @@ def test_build_run_summary_collects_required_fields(tmp_path):
     assert summary["validation"]["best_epoch"] == 2
     assert summary["artifacts"]["bundle"]["num_samples"] == 1
     assert summary["test_metrics"]["seen_test"]["overall_mse"] == 0.1
+    provenance = summary["provenance"]
+    assert provenance["schema_version"] == 1
+    assert provenance["runtime"]["python"]
+    assert provenance["experiment"]["split_protocol"] == "stratified_within_perturbation_condition"
+    assert provenance["inputs"]["processed_bundle"]["arrays.npz"]["sha256"]
+    assert provenance["inputs"]["configs"]["data"]["status"] == "available"
+    assert provenance["outputs"]["checkpoint"]["sha256"] == hashlib.sha256(
+        b"checkpoint"
+    ).hexdigest()
+    assert provenance["inputs"]["raw_dataset"]["status"] in {"available", "not_found"}
 
     output_path = write_run_summary(summary, output_dir / "run_summary.json")
     saved = json.loads(output_path.read_text(encoding="utf-8"))
@@ -116,3 +132,32 @@ def test_build_run_summary_can_override_recorded_seed(tmp_path):
     )
 
     assert summary["training"]["seed"] == 7
+
+
+
+def test_fingerprint_file_is_deterministic_and_reports_missing_files(tmp_path):
+    path = tmp_path / "payload.bin"
+    path.write_bytes(b"streamed-hash-payload")
+
+    first = _fingerprint_file(path)
+    second = _fingerprint_file(path)
+
+    assert first["status"] == "available"
+    assert first["sha256"] == second["sha256"]
+    assert first["sha256"] == hashlib.sha256(b"streamed-hash-payload").hexdigest()
+    assert first["size_bytes"] == len(b"streamed-hash-payload")
+
+    missing = _fingerprint_file(tmp_path / "missing.bin")
+    assert missing["status"] == "not_found"
+    assert missing["sha256"] is None
+
+    not_provided = _fingerprint_file(None)
+    assert not_provided["status"] == "not_provided"
+
+
+def test_git_provenance_is_optional_outside_a_repository(tmp_path):
+    git = _git_provenance(tmp_path)
+
+    assert git["status"] == "unavailable"
+    assert git["commit"] is None
+    assert git["working_tree"] == "unknown"

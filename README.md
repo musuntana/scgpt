@@ -97,6 +97,14 @@ source .venv/bin/activate
 
 You can also avoid manual activation and run everything through `uv run` or the shell wrappers in `scripts/`.
 
+## Experiment Provenance
+
+Training run summaries include Git revision/dirty state, runtime versions, split protocol and
+seeds, and SHA-256 fingerprints for configuration files, processed bundle files, the raw
+dataset when available, and the checkpoint. See
+[`docs/reproducibility.md`](docs/reproducibility.md) for field definitions and how to
+decide whether two runs are comparable.
+
 ## Main Commands
 
 Run tests:

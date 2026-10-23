@@ -472,7 +472,7 @@ and `transformer_seen_norman2019_seed21`, yielding:
 
 Synthetic and real artifact groups are kept separate in `artifacts/multi_seed_report.json`.
 
-The same report command also discovers nested GEARS `run_manifest.json` files and summarizes only their matched-control delta metrics. GEARS summaries remain **diagnostic-only** until real-data target equivalence is reviewed; the report explicitly flags the three-distinct-seed gate, target-equivalence status, and co-expression graph consistency.
+The same report command also discovers nested GEARS `run_manifest.json` files and summarizes only their matched-control delta metrics. GEARS summaries remain **diagnostic-only** until real-data target equivalence is reviewed; the report explicitly flags the three-distinct-seed gate, target-equivalence status, co-expression graph consistency, and duplicate-seed artifacts (which block performance-comparison eligibility until resolved).
 
 ## Results
 ### Included offline showcase assets

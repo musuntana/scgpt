@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,7 @@ def build_multiseed_report(
     for group, group_rows in grouped.items():
         is_gears = group[2] == "gears"
         duplicate_seeds: list[int] = []
+        duplicate_seed_artifacts: list[str] = []
         aggregation_rows = group_rows
         if is_gears:
             unique_seed_rows: dict[int, dict[str, Any]] = {}
@@ -64,6 +66,7 @@ def build_multiseed_report(
                 seed_value = int(seed)
                 if seed_value in unique_seed_rows:
                     duplicate_seeds.append(seed_value)
+                    duplicate_seed_artifacts.append(str(row.get("model", "")))
                     continue
                 unique_seed_rows[seed_value] = row
             aggregation_rows = list(unique_seed_rows.values())
@@ -120,18 +123,34 @@ def build_multiseed_report(
         }
 
         if is_gears:
+            # Gate on every artifact, including duplicate-seed artifacts that are
+            # excluded from the metric aggregate. Otherwise a conflicting retry
+            # could hide a graph mismatch or an unverified target alignment.
             target_equivalence_verified = all(
                 row.get("target_equivalence_verified") is True
-                for row in aggregation_rows
+                for row in group_rows
             )
+            graph_hash_values = [
+                row.get("coexpression_graph_sha256") for row in group_rows
+            ]
             graph_hashes = sorted(
                 {
-                    str(row["coexpression_graph_sha256"])
-                    for row in aggregation_rows
-                    if row.get("coexpression_graph_sha256")
+                    value
+                    for value in graph_hash_values
+                    if isinstance(value, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", value) is not None
                 }
             )
+            graph_hash_complete = all(
+                isinstance(value, str)
+                and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+                for value in graph_hash_values
+            )
+            coexpression_graph_consistent = (
+                graph_hash_complete and len(graph_hashes) == 1
+            )
             minimum_seed_gate_passed = len(seeds) >= 3
+            duplicate_seed_gate_passed = not duplicate_seeds
             comparison_blockers: list[str] = []
             if not target_equivalence_verified:
                 comparison_blockers.append(
@@ -141,12 +160,16 @@ def build_multiseed_report(
                 comparison_blockers.append(
                     "at least three distinct random seeds are required"
                 )
-            if len(graph_hashes) != 1:
+            if not duplicate_seed_gate_passed:
+                comparison_blockers.append(
+                    "duplicate-seed artifacts detected; resolve duplicates before comparison"
+                )
+            if not coexpression_graph_consistent:
                 comparison_blockers.append(
                     "co-expression graph hash is missing or differs across runs"
                 )
             if not all(
-                row.get("comparison_eligible") is True for row in aggregation_rows
+                row.get("comparison_eligible") is True for row in group_rows
             ):
                 comparison_blockers.append(
                     "run manifests do not authorize a protocol-matched performance comparison"
@@ -156,18 +179,21 @@ def build_multiseed_report(
                     "comparison_eligible": (
                         target_equivalence_verified
                         and minimum_seed_gate_passed
-                        and len(graph_hashes) == 1
+                        and duplicate_seed_gate_passed
+                        and coexpression_graph_consistent
                         and all(
                             row.get("comparison_eligible") is True
-                            for row in aggregation_rows
+                            for row in group_rows
                         )
                     ),
                     "target_equivalence_verified": target_equivalence_verified,
                     "minimum_seed_gate_passed": minimum_seed_gate_passed,
+                    "duplicate_seed_gate_passed": duplicate_seed_gate_passed,
                     "coexpression_graph_hashes": graph_hashes,
-                    "coexpression_graph_consistent": len(graph_hashes) == 1,
+                    "coexpression_graph_consistent": coexpression_graph_consistent,
                     "duplicate_seed_runs_ignored": len(duplicate_seeds),
                     "duplicate_seeds": sorted(set(duplicate_seeds)),
+                    "duplicate_seed_artifacts_ignored": sorted(duplicate_seed_artifacts),
                     "comparison_blockers": comparison_blockers,
                 }
             )

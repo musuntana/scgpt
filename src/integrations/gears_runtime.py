@@ -6,7 +6,6 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
-from src.data.pairing import ProcessedBundle
 from src.evaluation.metrics import mean_squared_error, pearson_correlation
 from src.integrations.gears_contract import PARTITIONS, _as_1d_int_array
 

@@ -26,7 +26,6 @@ from src.evaluation.inference import (
     summarize_perturbation_fit,
 )
 from src.ranking.target_ranking import build_target_ranking
-from src.utils.comparison import plot_grouped_metric_bars
 from src.utils.config import load_yaml
 
 
@@ -98,40 +97,47 @@ def generate_model_comparison_figure(
     transformer_summary: dict,
     mlp_summary: dict,
     xgboost_summary: dict,
+    protocol: str,
     title: str,
     output_path: Path,
 ) -> None:
+    metric_name = f"{protocol}_test"
+    transformer_metrics = transformer_summary.get("test_metrics", {}).get(metric_name)
+    mlp_metrics = mlp_summary.get("test_metrics", {}).get(metric_name)
+    xgboost_metrics = xgboost_summary.get("metrics", {}).get(metric_name)
+    if not all(
+        isinstance(metrics, dict)
+        for metrics in (transformer_metrics, mlp_metrics, xgboost_metrics)
+    ):
+        raise ValueError(
+            f"All model summaries must contain {metric_name!r} metrics from a "
+            f"{protocol!r}-protocol run before generating a comparison figure."
+        )
+
     models = ["Transformer", "MLP", "XGBoost"]
-    seen_pearson = [
-        transformer_summary["test_metrics"]["seen_test"]["pearson_per_perturbation"],
-        mlp_summary["test_metrics"]["seen_test"]["pearson_per_perturbation"],
-        xgboost_summary["metrics"]["seen_test"]["pearson_per_perturbation"],
-    ]
-    unseen_pearson = [
-        transformer_summary["test_metrics"]["unseen_test"]["pearson_per_perturbation"],
-        mlp_summary["test_metrics"]["unseen_test"]["pearson_per_perturbation"],
-        xgboost_summary["metrics"]["unseen_test"]["pearson_per_perturbation"],
+    pearson_values = [
+        float(transformer_metrics["pearson_per_perturbation"]),
+        float(mlp_metrics["pearson_per_perturbation"]),
+        float(xgboost_metrics["pearson_per_perturbation"]),
     ]
 
     figure, axis = plt.subplots(figsize=(8, 4.8))
-    plot_grouped_metric_bars(
-        axis,
-        models,
-        seen_pearson,
-        unseen_pearson,
-        ylabel="Per-perturbation Pearson",
-        title=title,
-        seen_label="Seen test",
-        unseen_label="Unseen test",
-        annotate=True,
-        value_format="{:.3f}",
-        x_tick_rotation=0,
-    )
+    bars = axis.bar(models, pearson_values)
+    axis.set_ylabel(f"Per-perturbation Pearson ({protocol} test)")
+    axis.set_title(title)
+    for bar, value in zip(bars, pearson_values, strict=True):
+        axis.annotate(
+            f"{value:.3f}",
+            xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+        )
 
     figure.tight_layout()
     figure.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(figure)
-
 
 def generate_inference_preview_figure(
     *,
@@ -242,10 +248,22 @@ def main() -> None:
         Path(args.xgboost_artifact_dir) / "xgboost_run_summary.json"
     )
 
+    protocol = transformer_summary.get("split", {}).get("train_protocol", "seen")
+    mlp_protocol = mlp_summary.get("split", {}).get("train_protocol", "seen")
+    xgboost_protocol = xgboost_summary.get("train_split_prefix", "seen")
+    if protocol not in {"seen", "unseen"}:
+        raise ValueError(f"Unsupported training protocol in Transformer summary: {protocol!r}")
+    if mlp_protocol != protocol or xgboost_protocol != protocol:
+        raise ValueError(
+            "Model comparison requires all three artifacts to use the same training protocol; "
+            f"got Transformer={protocol!r}, MLP={mlp_protocol!r}, XGBoost={xgboost_protocol!r}."
+        )
+
     generate_model_comparison_figure(
         transformer_summary=transformer_summary,
         mlp_summary=mlp_summary,
         xgboost_summary=xgboost_summary,
+        protocol=protocol,
         title=args.comparison_title,
         output_path=output_dir / args.comparison_output_name,
     )

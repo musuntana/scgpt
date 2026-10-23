@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from src.data.pairing import _summarize_split_integrity
+from src.evaluation.protocol import CHECKPOINT_METRIC_DIRECTION
 from src.utils.config import load_yaml
 
 
@@ -208,7 +209,12 @@ def summarize_history(
     history: list[dict[str, Any]],
     checkpoint_metric: str,
 ) -> dict[str, Any]:
-    """Summarize the tracked validation history for a training run."""
+    """Summarize history using the same objective direction as checkpoint selection."""
+    direction = CHECKPOINT_METRIC_DIRECTION.get(checkpoint_metric)
+    if direction is None:
+        raise ValueError(
+            f"Unsupported checkpoint_metric={checkpoint_metric!r} in run summary."
+        )
     if not history:
         return {
             "history_length": 0,
@@ -217,7 +223,17 @@ def summarize_history(
             "last_epoch": {},
         }
 
-    best_record = max(history, key=lambda record: float(record.get(checkpoint_metric, float("-inf"))))
+    for epoch_record in history:
+        if checkpoint_metric not in epoch_record:
+            raise ValueError(
+                f"History record is missing checkpoint metric {checkpoint_metric!r}."
+            )
+        if not np.isfinite(float(epoch_record[checkpoint_metric])):
+            raise ValueError(
+                f"History checkpoint metric {checkpoint_metric!r} is non-finite."
+            )
+    selector = max if direction == "max" else min
+    best_record = selector(history, key=lambda record: float(record[checkpoint_metric]))
     return {
         "history_length": len(history),
         "best_epoch": int(best_record["epoch"]),

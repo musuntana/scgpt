@@ -68,6 +68,22 @@ def test_shared_gene_identity_inference_uses_exact_gene_mapping():
         predict_delta_for_batch(model, unmapped_batch)
 
 
+def test_shared_gene_identity_inference_rejects_ambiguous_gene_names():
+    bundle = {
+        "control_expression": np.array([[1.0, 2.0]], dtype=np.float32),
+        "target_delta": np.array([[0.1, 0.2]], dtype=np.float32),
+        "perturbation_index": np.array([0], dtype=np.int64),
+        "metadata": {
+            "gene_names": ["p1", "p1"],
+            "perturbation_names": ["p1"],
+        },
+    }
+
+    batch = build_perturbation_batch(bundle, "p1")
+
+    assert batch.perturbation_gene_index == -1
+
+
 def test_gene_comparison_and_fit_summary_are_consistent():
     comparison = build_gene_comparison_frame(
         gene_names=["g1", "g2", "g3"],

@@ -7,6 +7,7 @@ import hashlib
 import importlib.metadata
 import json
 import platform
+import pickle
 import random
 import sys
 import time
@@ -18,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data.pairing import load_processed_bundle
+from src.integrations.gears_contract import build_gears_split_contract
 from src.integrations.gears_runtime import (
     attach_train_only_loss_metadata,
     compute_absolute_expression_metrics,
@@ -232,6 +234,12 @@ def run_gears_baseline(
         "sample_ids": bundle.sample_ids,
         "splits": bundle.splits,
     }
+    expected_split, _ = build_gears_split_contract(bundle_payload)
+    if split_json != expected_split:
+        raise ValueError(
+            "GEARS custom split JSON no longer matches the hashed processed bundle; "
+            "refusing a possible split/protocol substitution."
+        )
     for filename, expected_sha in preflight_manifest["bundle_artifacts_sha256"].items():
         if file_sha256(bundle_path / filename) != expected_sha:
             raise ValueError(f"Bundle artifact hash changed since preflight: {filename}")
@@ -270,7 +278,20 @@ def run_gears_baseline(
     )
 
     adata = ad.read_h5ad(input_path)
+    for partition in ("train", "val", "test"):
+        observed_conditions = set(
+            adata.obs.loc[
+                adata.obs["scgpt_split"].astype(str) == partition, "condition"
+            ].astype(str)
+        )
+        if observed_conditions != set(split_json[partition]):
+            raise ValueError(
+                f"GEARS input H5AD {partition} conditions do not match the validated split JSON."
+            )
     metadata_report = attach_train_only_loss_metadata(adata)
+    validated_split_path = output / "validated_gears_custom_split.pkl"
+    with validated_split_path.open("wb") as handle:
+        pickle.dump(split_json, handle, protocol=4)
     pert_data = PertData(data_path=str(data_path), default_pert_graph=False)
     started = time.perf_counter()
     # This must remain True: GEARS' default DE/dropout preprocessing sees held-out cells.
@@ -306,7 +327,7 @@ def run_gears_baseline(
             f"{missing_conditions}. No training was started."
         )
 
-    pert_data.prepare_split(split="custom", split_dict_path=str(split_path))
+    pert_data.prepare_split(split="custom", split_dict_path=str(validated_split_path))
     for partition in ("train", "val", "test"):
         if set(pert_data.set2conditions[partition]) != set(split_json[partition]):
             raise RuntimeError(
@@ -374,7 +395,8 @@ def run_gears_baseline(
         "status": "TRAINED_DIAGNOSTIC_NOT_DELTA_COMPARABLE",
         "input_h5ad_sha256": input_hash,
         "preflight_manifest_sha256": file_sha256(manifest_path),
-        "split_pickle_sha256": file_sha256(split_path),
+        "preflight_split_pickle_sha256": file_sha256(split_path),
+        "validated_split_pickle_sha256": file_sha256(validated_split_path),
         "split_json_sha256": file_sha256(split_json_path),
         "source_h5ad_sha256": preflight_manifest.get("source_h5ad_sha256"),
         "bundle_artifacts_sha256": preflight_manifest["bundle_artifacts_sha256"],

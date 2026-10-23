@@ -244,7 +244,7 @@ Offline fallback when raw data download is unavailable:
 This generates a clearly labeled synthetic bundle and demo artifacts:
 - bundle: `data/processed/synthetic_demo_bundle`
 - artifact dir: `artifacts/transformer_seen_synthetic_demo`
-- files: `best_model.pt`, `seen_test_metrics.json`, `unseen_test_metrics.json`, `deg_artifact.csv`, `run_summary.json`
+- files: `best_model.pt`, `seen_test_metrics.json`, `deg_artifact.csv`, `run_summary.json` (the synthetic demo reports only its matching seen test split)
 
 When the real Norman2019 demo artifacts are absent but the synthetic ones exist, the Streamlit app will default to the synthetic paths automatically.
 The app now surfaces whether the loaded artifacts are **real** or **synthetic**, and the model-comparison
@@ -412,10 +412,11 @@ Write a structured local run summary:
 Multi-seed reporting:
 
 ```bash
-# create repeated runs with distinct output dirs
+# create repeated runs with distinct output dirs; each run evaluates only its matching test split
 ./scripts/run_train_transformer.sh \
   --bundle-dir data/processed/norman2019_demo_bundle \
   --output-dir artifacts/transformer_seen_norman2019_seed7 \
+  --split-prefix seen \
   --seed 7
 
 # record the actual seed in run_summary.json

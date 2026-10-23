@@ -4,6 +4,13 @@ All notable changes to PerturbScope-GPT are documented here.
 
 ---
 
+## [Unreleased]
+
+- Fixed the seen-split stratification guard and added deterministic class-balance regression tests.
+- Reduced CI duplication by validating code-relevant pull requests and supporting manual workflow dispatch; docs-only changes no longer trigger CI.
+
+---
+
 ## [Reproducibility & analysis] — 2026-03
 
 **Result robustness and failure-analysis pass**

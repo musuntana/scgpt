@@ -52,7 +52,22 @@ def build_multiseed_report(
 
     report_rows: list[dict[str, Any]] = []
     for group, group_rows in grouped.items():
-        if len(group_rows) < min_runs:
+        is_gears = group[2] == "gears"
+        duplicate_seeds: list[int] = []
+        aggregation_rows = group_rows
+        if is_gears:
+            unique_seed_rows: dict[int, dict[str, Any]] = {}
+            for row in sorted(group_rows, key=lambda item: str(item.get("model", ""))):
+                seed = row.get("seed")
+                if seed is None:
+                    continue
+                seed_value = int(seed)
+                if seed_value in unique_seed_rows:
+                    duplicate_seeds.append(seed_value)
+                    continue
+                unique_seed_rows[seed_value] = row
+            aggregation_rows = list(unique_seed_rows.values())
+        if len(aggregation_rows) < min_runs:
             continue
 
         metric_summary: dict[str, dict[str, float | int]] = {}
@@ -63,7 +78,11 @@ def build_multiseed_report(
                 continue
             if field.startswith("unseen_") and train_protocol != "unseen":
                 continue
-            values = [float(row[field]) for row in group_rows if row.get(field) is not None]
+            values = [
+                float(row[field])
+                for row in aggregation_rows
+                if row.get(field) is not None
+            ]
             if not values:
                 continue
             stats = _metric_stats(values)
@@ -75,31 +94,84 @@ def build_multiseed_report(
         dataset_name = next(
             (
                 str(row["dataset_name"])
-                for row in group_rows
+                for row in aggregation_rows
                 if row.get("dataset_name")
             ),
             "unknown_dataset",
         )
-        report_rows.append(
+        seeds = sorted(
             {
-                "group_key": f"{dataset_group}:{train_protocol}:{model_type}",
-                "group_label": base_model_label,
-                "dataset_name": dataset_name,
-                "train_protocol": train_protocol,
-                "model_type": model_type,
-                "num_runs": len(group_rows),
-                "artifact_labels": [str(row["model"]) for row in group_rows],
-                "seeds": sorted(
-                    {
-                        int(row["seed"])
-                        for row in group_rows
-                        if row.get("seed") is not None
-                    }
-                ),
-                "metrics": metric_summary,
-                **flat_metrics,
+                int(row["seed"])
+                for row in aggregation_rows
+                if row.get("seed") is not None
             }
         )
+        report_row: dict[str, Any] = {
+            "group_key": f"{dataset_group}:{train_protocol}:{model_type}",
+            "group_label": base_model_label,
+            "dataset_name": dataset_name,
+            "train_protocol": train_protocol,
+            "model_type": model_type,
+            "num_runs": len(aggregation_rows),
+            "artifact_labels": [str(row["model"]) for row in aggregation_rows],
+            "seeds": seeds,
+            "metrics": metric_summary,
+            **flat_metrics,
+        }
+
+        if is_gears:
+            target_equivalence_verified = all(
+                row.get("target_equivalence_verified") is True
+                for row in aggregation_rows
+            )
+            graph_hashes = sorted(
+                {
+                    str(row["coexpression_graph_sha256"])
+                    for row in aggregation_rows
+                    if row.get("coexpression_graph_sha256")
+                }
+            )
+            minimum_seed_gate_passed = len(seeds) >= 3
+            comparison_blockers: list[str] = []
+            if not target_equivalence_verified:
+                comparison_blockers.append(
+                    "real-data target equivalence has not been verified"
+                )
+            if not minimum_seed_gate_passed:
+                comparison_blockers.append(
+                    "at least three distinct random seeds are required"
+                )
+            if len(graph_hashes) != 1:
+                comparison_blockers.append(
+                    "co-expression graph hash is missing or differs across runs"
+                )
+            if not all(
+                row.get("comparison_eligible") is True for row in aggregation_rows
+            ):
+                comparison_blockers.append(
+                    "run manifests do not authorize a protocol-matched performance comparison"
+                )
+            report_row.update(
+                {
+                    "comparison_eligible": (
+                        target_equivalence_verified
+                        and minimum_seed_gate_passed
+                        and len(graph_hashes) == 1
+                        and all(
+                            row.get("comparison_eligible") is True
+                            for row in aggregation_rows
+                        )
+                    ),
+                    "target_equivalence_verified": target_equivalence_verified,
+                    "minimum_seed_gate_passed": minimum_seed_gate_passed,
+                    "coexpression_graph_hashes": graph_hashes,
+                    "coexpression_graph_consistent": len(graph_hashes) == 1,
+                    "duplicate_seed_runs_ignored": len(duplicate_seeds),
+                    "duplicate_seeds": sorted(set(duplicate_seeds)),
+                    "comparison_blockers": comparison_blockers,
+                }
+            )
+        report_rows.append(report_row)
 
     return sorted(
         report_rows,
@@ -163,6 +235,15 @@ def format_multiseed_report(report_rows: list[dict[str, Any]], *, artifact_root:
                 f"  runs={row['num_runs']} | seeds={row['seeds'] or 'unknown'}",
             ]
         )
+        if row.get("model_type") == "gears":
+            lines.append(
+                "  diagnostic-only: "
+                f"comparison_eligible={row.get('comparison_eligible', False)} | "
+                f"target_equivalence_verified={row.get('target_equivalence_verified', False)} | "
+                f"three_seed_gate={row.get('minimum_seed_gate_passed', False)}"
+            )
+            for blocker in row.get("comparison_blockers", []):
+                lines.append(f"  blocker: {blocker}")
         for metric_name in METRIC_FIELDS:
             stats = row["metrics"].get(metric_name)
             if not stats:

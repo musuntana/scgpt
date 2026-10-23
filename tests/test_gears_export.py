@@ -309,3 +309,35 @@ def test_source_h5ad_reprocessing_exports_exact_gears_input(tmp_path):
         "train"
     }
     assert exported.uns["scgpt_gears_export"]["de_statistics_computed"] is False
+
+
+def test_preflight_rejects_existing_artifact_before_loading_bundle(tmp_path, monkeypatch):
+    output_dir = tmp_path / "existing-export"
+    output_dir.mkdir()
+    (output_dir / "gears_preflight.json").write_text("{}", encoding="utf-8")
+
+    def unexpected_bundle_load(*args, **kwargs):
+        raise AssertionError("bundle loading must not start when output is already occupied")
+
+    monkeypatch.setattr(
+        "scripts.prepare_gears_baseline.load_processed_bundle",
+        unexpected_bundle_load,
+    )
+    with pytest.raises(FileExistsError, match="gears_preflight.json"):
+        prepare_gears_preflight(tmp_path / "missing-bundle", output_dir)
+
+
+def test_preflight_rejects_file_output_path_before_loading_bundle(tmp_path, monkeypatch):
+    output_path = tmp_path / "not-a-directory"
+    output_path.write_text("keep me", encoding="utf-8")
+
+    def unexpected_bundle_load(*args, **kwargs):
+        raise AssertionError("bundle loading must not start when output path is a file")
+
+    monkeypatch.setattr(
+        "scripts.prepare_gears_baseline.load_processed_bundle",
+        unexpected_bundle_load,
+    )
+    with pytest.raises(NotADirectoryError, match="not a directory"):
+        prepare_gears_preflight(tmp_path / "missing-bundle", output_path)
+    assert output_path.read_text(encoding="utf-8") == "keep me"

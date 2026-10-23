@@ -28,10 +28,19 @@ def _batch(target: float) -> _Batch:
     )
 
 
+class _ToyModel(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.linear = torch.nn.Linear(1, 1, bias=False)
+        with torch.no_grad():
+            self.linear.weight.zero_()
+
+    def forward(self, batch: _Batch) -> torch.Tensor:
+        return self.linear(batch.x)
+
+
 def _gears_model() -> SimpleNamespace:
-    model = torch.nn.Linear(1, 1, bias=False)
-    with torch.no_grad():
-        model.weight.zero_()
+    model = _ToyModel()
     return SimpleNamespace(
         model=model,
         ctrl_expression=torch.zeros(1),

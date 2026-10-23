@@ -6,6 +6,7 @@ All notable changes to PerturbScope-GPT are documented here.
 
 ## [Unreleased]
 
+- Added an optional, fail-closed GEARS condition-split preflight exporter with provenance hashes and tests; it does not install GEARS or claim a model benchmark.
 - Added a decision record comparing GEARS, official scGPT perturbation fine-tuning, and the current categorical-ID models; GEARS is the first optional baseline to validate in an isolated environment.
 - Training scripts now evaluate only the test split matching the selected training protocol; the generic evaluator rejects checkpoint/split protocol mismatches.
 - Run summaries and model-comparison assets no longer mix seen/unseen test metrics from a single checkpoint; comparison figures use one matching protocol.

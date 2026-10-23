@@ -6,8 +6,10 @@ import numpy as np
 import pytest
 
 from src.evaluation.protocol import (
+    fingerprint_model_config,
     fingerprint_processed_bundle,
     matching_test_split,
+    validate_checkpoint_model_identity,
     validate_checkpoint_bundle_identity,
     validate_split_matches_training_protocol,
 )
@@ -118,3 +120,70 @@ def test_checkpoint_bundle_identity_marks_legacy_unverified(tmp_path):
     assert validate_checkpoint_bundle_identity({"schema_version": 1}, root) is False
     with pytest.raises(ValueError, match="missing required bundle_artifacts_sha256"):
         validate_checkpoint_bundle_identity({"schema_version": 2}, root)
+
+
+def test_checkpoint_model_config_identity_roundtrip(tmp_path):
+    config = tmp_path / "model.yaml"
+    config.write_text("transformer:\\n  dropout: 0.1\\n", encoding="utf-8")
+    protocol = {
+        "schema_version": 3,
+        "model_type": "transformer_shared_gene_identity",
+        "model_config_sha256": fingerprint_model_config(config),
+    }
+    assert validate_checkpoint_model_identity(
+        protocol, model_type="transformer_shared_gene_identity", model_config_path=config
+    )
+
+
+def test_checkpoint_model_config_rejects_same_shape_configuration_drift(tmp_path):
+    config = tmp_path / "model.yaml"
+    config.write_text("dropout: 0.1\n", encoding="utf-8")
+    protocol = {
+        "schema_version": 3,
+        "model_type": "transformer",
+        "model_config_sha256": fingerprint_model_config(config),
+    }
+    config.write_text("dropout: 0.2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="model configuration identity mismatch"):
+        validate_checkpoint_model_identity(
+            protocol, model_type="transformer", model_config_path=config
+        )
+
+
+@pytest.mark.parametrize("requested", ["transformer_shared_gene_identity", "mlp"])
+def test_checkpoint_model_identity_rejects_incorrect_model_type(tmp_path, requested):
+    protocol = {"schema_version": 3, "model_type": "transformer", "model_config_sha256": "a" * 64}
+    with pytest.raises(ValueError, match="model_type mismatch"):
+        validate_checkpoint_model_identity(
+            protocol, model_type=requested, model_config_path=tmp_path / "missing.yaml"
+        )
+
+
+@pytest.mark.parametrize(
+    "protocol",
+    [
+        {"schema_version": 3, "model_type": "transformer"},
+        {"schema_version": 3, "model_type": "transformer", "model_config_sha256": ""},
+        {"schema_version": 3, "model_type": "transformer", "model_config_sha256": "A" * 64},
+    ],
+)
+def test_checkpoint_model_contract_rejects_missing_or_invalid_hash(tmp_path, protocol):
+    with pytest.raises(ValueError, match="model_config_sha256"):
+        validate_checkpoint_model_identity(
+            protocol, model_type="transformer", model_config_path=tmp_path / "model.yaml"
+        )
+
+
+def test_checkpoint_model_legacy_reports_unverified_and_mlp_type_is_enforced(tmp_path):
+    missing = tmp_path / "unused.yaml"
+    assert not validate_checkpoint_model_identity(
+        {"schema_version": 2}, model_type="transformer", model_config_path=missing
+    )
+    assert not validate_checkpoint_model_identity(
+        {"schema_version": 2, "model_type": "transformer"},
+        model_type="transformer", model_config_path=missing
+    )
+    assert validate_checkpoint_model_identity(
+        {"schema_version": 2, "model_type": "mlp"},
+        model_type="mlp", model_config_path=missing
+    )

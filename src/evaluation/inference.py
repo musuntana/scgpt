@@ -11,7 +11,10 @@ import torch
 from src.data.gene_identity import build_unique_gene_name_index
 from src.data.io import read_json
 from src.evaluation.metrics import mean_squared_error, pearson_correlation
-from src.evaluation.protocol import validate_checkpoint_bundle_identity
+from src.evaluation.protocol import (
+    validate_checkpoint_bundle_identity,
+    validate_checkpoint_model_identity,
+)
 from src.models.mlp import MLPBaseline
 from src.models.shared_gene_transformer import SharedGeneIdentityTransformer
 from src.models.transformer import TransformerPerturbationModel
@@ -86,6 +89,9 @@ def load_torch_model_for_bundle(
                     "to verify it before inference."
                 )
             validate_checkpoint_bundle_identity(protocol, bundle_dir)
+        validate_checkpoint_model_identity(
+            protocol, model_type=model_type, model_config_path=model_config_path
+        )
     model = build_torch_model(
         model_type=model_type,
         num_genes=int(bundle["control_expression"].shape[1]),

@@ -113,6 +113,7 @@ def _train_xgboost(args: argparse.Namespace) -> None:
             {
                 "schema_version": 2,
                 "bundle_artifacts_sha256": bundle_artifacts_sha256,
+                "model_type": "xgboost",
                 "train_protocol": args.split_prefix,
                 "checkpoint_selection_split": None,
                 "test_split": test_split_name,
@@ -195,6 +196,7 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
             {
                 "schema_version": 2,
                 "bundle_artifacts_sha256": bundle_artifacts_sha256,
+                "model_type": "mlp",
                 "train_protocol": args.split_prefix,
                 "checkpoint_selection_split": f"{args.split_prefix}_val",
                 "test_split": test_split_name,

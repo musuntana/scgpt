@@ -190,16 +190,16 @@ def compute_control_relative_delta_metrics(
     predictions: Mapping[str, np.ndarray],
     bundle: Mapping[str, Any],
     *,
-    control_reference_mean: np.ndarray,
     split_name: str = "unseen_test",
 ) -> dict[str, Any]:
-    """Convert GEARS absolute predictions to the bundle's control-relative delta space.
+    """Evaluate GEARS predictions against sample-matched control-relative deltas.
 
-    GEARS predicts expression by applying the perturbation to its control cells.
-    Subtracting the mean expression of those exact control cells yields a
-    perturbation delta. Targets are the bundle's matched-control deltas, averaged
-    over each held-out perturbation group. Only per-perturbation MSE and Pearson
-    are marked comparable to the repository's corresponding aggregated metrics.
+    GEARS returns one absolute-expression prediction per perturbation. The bundle
+    stores the control-expression vector matched to each perturbed sample, which
+    may vary by batch/context. To match the repository's metric definition,
+    subtract the mean matched-control vector for each perturbation's held-out
+    samples from that perturbation's absolute prediction, then compare against
+    the mean of those samples' target deltas.
     """
     splits = bundle.get("splits")
     if not isinstance(splits, Mapping) or split_name not in splits:
@@ -236,15 +236,18 @@ def compute_control_relative_delta_metrics(
     if not np.all(np.isfinite(target_delta)):
         raise ValueError("Bundle target_delta contains non-finite values.")
 
-    baseline = np.asarray(control_reference_mean, dtype=np.float64)
-    if baseline.ndim != 1 or baseline.shape != (target_delta.shape[1],):
+    if bundle.get("control_expression") is None:
+        raise ValueError("Bundle control_expression array is missing.")
+    matched_controls = np.asarray(bundle["control_expression"], dtype=np.float64)
+    if matched_controls.shape != target_delta.shape:
         raise ValueError(
-            "GEARS control reference must be a one-dimensional vector in bundle gene order."
+            "Bundle control_expression shape must match target_delta shape."
         )
-    if not np.all(np.isfinite(baseline)):
-        raise ValueError("GEARS control reference contains non-finite values.")
+    if not np.all(np.isfinite(matched_controls)):
+        raise ValueError("Bundle control_expression contains non-finite values.")
 
     per_perturbation: dict[str, dict[str, float | int]] = {}
+    matched_control_mean_hashes: dict[str, str] = {}
     for perturbation_index in sorted(set(labels[indices].tolist())):
         perturbation = names[int(perturbation_index)]
         if perturbation not in predictions:
@@ -252,10 +255,13 @@ def compute_control_relative_delta_metrics(
                 f"Missing GEARS prediction for held-out perturbation {perturbation!r}."
             )
         predicted_absolute = np.asarray(predictions[perturbation], dtype=np.float64)
-        if predicted_absolute.ndim != 1 or predicted_absolute.shape != baseline.shape:
+        if (
+            predicted_absolute.ndim != 1
+            or predicted_absolute.shape != (target_delta.shape[1],)
+        ):
             raise ValueError(
                 f"Prediction for {perturbation!r} must be a one-dimensional vector "
-                f"with {baseline.size} genes; got shape {predicted_absolute.shape}."
+                f"with {target_delta.shape[1]} genes; got shape {predicted_absolute.shape}."
             )
         if not np.all(np.isfinite(predicted_absolute)):
             raise ValueError(
@@ -263,8 +269,14 @@ def compute_control_relative_delta_metrics(
             )
 
         group_indices = indices[labels[indices] == perturbation_index]
-        predicted_delta = predicted_absolute - baseline
+        matched_control_mean = matched_controls[group_indices].mean(
+            axis=0, dtype=np.float64
+        )
+        predicted_delta = predicted_absolute - matched_control_mean
         target = target_delta[group_indices].mean(axis=0, dtype=np.float64)
+        matched_control_mean_hashes[perturbation] = hashlib.sha256(
+            matched_control_mean.astype("<f8", copy=False).tobytes()
+        ).hexdigest()
         per_perturbation[perturbation] = {
             "sample_count": int(group_indices.size),
             "mse_delta_expression": mean_squared_error(predicted_delta, target),
@@ -276,7 +288,13 @@ def compute_control_relative_delta_metrics(
     return {
         "split": split_name,
         "metric_space": "control_relative_delta_expression",
-        "prediction_conversion": "absolute_prediction_minus_gears_control_mean",
+        "prediction_conversion": (
+            "absolute_prediction_minus_mean_bundle_control_expression_per_perturbation"
+        ),
+        "control_reference_source": "bundle.control_expression",
+        "control_reference_scope": (
+            "matched control vectors for each selected sample, averaged within perturbation"
+        ),
         "target_source": "bundle.target_delta",
         "target_aggregation": "mean_by_perturbation_over_selected_split",
         "directly_comparable_to_repository_delta_metrics": True,
@@ -290,10 +308,11 @@ def compute_control_relative_delta_metrics(
             np.mean([row["pearson_delta_expression"] for row in per_perturbation.values()])
         ),
         "per_perturbation": per_perturbation,
+        "matched_control_mean_sha256": matched_control_mean_hashes,
         "comparison_eligible": False,
         "interpretation": (
-            "Target-aligned diagnostic metrics; multi-seed and real-data review are "
-            "still required before a model-performance claim."
+            "Matched-control target-aligned diagnostic metrics; real-data review and "
+            "multi-seed validation are still required before a model-performance claim."
         ),
     }
 

@@ -55,6 +55,14 @@ def parse_args() -> argparse.Namespace:
         help="Optional override for HVG count.",
     )
     parser.add_argument(
+        "--retain-perturbation-target-genes",
+        action="store_true",
+        help=(
+            "Opt in to a training-only HVG panel augmented with all known target "
+            "gene identities. Fails closed for unmappable targets or panel bounds."
+        ),
+    )
+    parser.add_argument(
         "--max-cells-per-perturbation",
         type=int,
         default=None,
@@ -81,6 +89,9 @@ def main() -> None:
         preprocess_config["hvg_top_genes"] = int(args.hvg_top_genes)
     if args.max_cells_per_perturbation is not None:
         preprocess_config["max_cells_per_perturbation"] = int(args.max_cells_per_perturbation)
+
+    if args.retain_perturbation_target_genes:
+        preprocess_config["retain_perturbation_target_genes"] = True
 
     random_seed = int(data_config["split"]["random_seed"])
     adata = load_anndata(args.input_path)

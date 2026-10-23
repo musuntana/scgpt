@@ -149,6 +149,25 @@ def test_absolute_expression_metrics_are_explicitly_not_delta_comparable():
     assert set(result["per_perturbation"]) == {"D"}
 
 
+def test_absolute_expression_metrics_reject_non_finite_prediction():
+    with pytest.raises(ValueError, match="prediction.*non-finite"):
+        compute_absolute_expression_metrics(
+            {"D": np.array([1.0, np.nan], dtype=np.float32)},
+            _bundle(),
+        )
+
+
+def test_absolute_expression_metrics_reject_non_finite_bundle_arrays():
+    bundle = _bundle()
+    bundle["target_delta"][6, 0] = np.inf
+
+    with pytest.raises(ValueError, match="non-finite"):
+        compute_absolute_expression_metrics(
+            {"D": np.ones(2, dtype=np.float32)},
+            bundle,
+        )
+
+
 def test_absolute_expression_metrics_fail_if_prediction_is_missing():
     with pytest.raises(ValueError, match="Missing GEARS prediction"):
         compute_absolute_expression_metrics(

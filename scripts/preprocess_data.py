@@ -114,6 +114,7 @@ def main() -> None:
         random_seed=random_seed,
         select_hvg=False,
         filter_genes_before_split=False,
+        normalize_expression=False,
     )
     prepared = select_hvgs_from_training_partitions(
         adata=prepared,

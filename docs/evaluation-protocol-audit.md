@@ -27,17 +27,19 @@ incorrectly.
 Both `src/models/transformer.py` and `src/models/mlp.py` create a learned
 `nn.Embedding(num_perturbations, ...)` table.
 
-- Training with the seen split puts samples from each perturbation identity in
-  the training set. Evaluating the separate unseen-group test indices with
-  that checkpoint therefore does not hold out the perturbation identities.
-- Training with the unseen split does hold out perturbation identities, but
-  their embedding rows receive no gradient updates. This architecture does not
+- A seen-protocol checkpoint has training examples from every perturbation
+  identity, so its performance on the separate unseen-group indices is not a
+  held-out-identity evaluation.
+- An unseen-protocol checkpoint holds out perturbation identities, but their
+  embedding rows receive no training updates. This architecture does not
   provide a meaningful learned representation for those held-out IDs.
 
-`scripts/train_transformer.py` currently evaluates both `seen_test` and
-`unseen_test` using the same checkpoint. As a result, neither training mode
-by itself establishes zero-shot generalization to a perturbation identity
-absent from training.
+The training entrypoints now evaluate only the test split matching the selected
+training protocol, and the generic evaluation CLI rejects a split whose protocol
+conflicts with the checkpoint's run summary. Historical metrics and artifacts
+may still contain cross-protocol evaluations from the previous behavior; those
+values are retained for traceability but are not valid evidence of zero-shot
+generalization.
 
 A future zero-shot experiment needs a representation shared across perturbation
 identities (for example, explicit gene-level or other perturbation features),

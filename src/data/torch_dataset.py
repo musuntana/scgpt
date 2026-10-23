@@ -30,9 +30,19 @@ class ProcessedDataset(Dataset):
         perturbation_names = [
             str(name) for name in self.metadata["perturbation_names"]
         ]
-        if len(set(gene_names)) != len(gene_names):
-            raise ValueError("Processed bundle gene_names must be unique for gene-identity mapping.")
-        gene_to_index = {name: index for index, name in enumerate(gene_names)}
+        gene_to_index: dict[str, int] = {}
+        ambiguous_gene_names: set[str] = set()
+        for index, name in enumerate(gene_names):
+            if name in gene_to_index:
+                ambiguous_gene_names.add(name)
+            else:
+                gene_to_index[name] = index
+        for name in ambiguous_gene_names:
+            gene_to_index.pop(name, None)
+        self.ambiguous_gene_names = sorted(ambiguous_gene_names)
+        self.ambiguous_perturbation_names = [
+            name for name in perturbation_names if name in ambiguous_gene_names
+        ]
         self.perturbation_gene_indices = np.asarray(
             [gene_to_index.get(name, -1) for name in perturbation_names],
             dtype=np.int64,

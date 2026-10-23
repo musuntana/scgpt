@@ -36,8 +36,7 @@ ASSET_DIR="${ROOT_DIR}/docs/assets"
   --data-config "${DATA_CONFIG}" \
   --model-config "${MODEL_CONFIG}" \
   --train-config "${TRAIN_CONFIG}" \
-  --seen-metrics-path "${MLP_DIR}/mlp_seen_test_metrics.json" \
-  --unseen-metrics-path "${MLP_DIR}/mlp_unseen_test_metrics.json"
+  --seen-metrics-path "${MLP_DIR}/mlp_seen_test_metrics.json"
 
 "${ROOT_DIR}/scripts/run_train_baselines.sh" \
   --bundle-dir "${BUNDLE_DIR}" \

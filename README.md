@@ -618,10 +618,10 @@ Run `./scripts/run_norman2019_demo.sh` first to generate the required bundle.
 1. bootstrap the environment with `./scripts/bootstrap_env.sh`
 2. place a `.h5ad` file under `data/raw/`
 3. optionally inspect schema resolution with `./scripts/run_inspect_anndata.sh`
-4. preprocess it into a bundle under `data/processed/`
-5. train a minimal Transformer on the seen split
-6. evaluate seen and unseen metrics
-7. write `run_summary.json` for the completed experiment
+4. preprocess it into a split-aware bundle under `data/processed/`
+5. train a Transformer with an explicit `--split-prefix seen` or `--split-prefix unseen`
+6. evaluate only the test split matching that training protocol
+7. write `run_summary.json`; it records only matching-protocol metrics
 8. inspect ranking outputs or start Streamlit for demo artifacts
 
 ## Notes

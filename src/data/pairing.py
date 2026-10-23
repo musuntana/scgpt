@@ -79,6 +79,37 @@ def build_control_mean_lookup(
     return lookup, global_control_mean
 
 
+def _validate_split_fractions(val_fraction: float, test_fraction: float) -> None:
+    """Validate fractions before any split helper calls scikit-learn."""
+    for name, value in (("val_fraction", val_fraction), ("test_fraction", test_fraction)):
+        if not np.isfinite(value) or value < 0.0 or value >= 1.0:
+            raise ValueError(f"{name} must be finite and in [0, 1); got {value!r}")
+    if val_fraction + test_fraction >= 1.0:
+        raise ValueError(
+            "val_fraction + test_fraction must be less than 1.0; "
+            f"got {val_fraction + test_fraction!r}"
+        )
+
+
+def _stratification_fallback_reason(
+    labels: np.ndarray,
+    *,
+    train_size: int,
+    test_size: int,
+) -> str | None:
+    _, counts = np.unique(labels, return_counts=True)
+    if counts.size == 0:
+        return "no labels are available"
+    if int(counts.min()) < 2:
+        return "at least one class has fewer than two samples"
+    num_classes = int(counts.size)
+    if train_size < num_classes:
+        return f"train partition size {train_size} is smaller than {num_classes} classes"
+    if test_size < num_classes:
+        return f"test partition size {test_size} is smaller than {num_classes} classes"
+    return None
+
+
 def _can_stratify(
     labels: np.ndarray,
     *,
@@ -86,16 +117,14 @@ def _can_stratify(
     test_size: int | None = None,
 ) -> bool:
     """Return whether every class can be represented in both split partitions."""
-    _, counts = np.unique(labels, return_counts=True)
-    if counts.size == 0 or int(counts.min()) < 2:
-        return False
-
-    num_classes = int(counts.size)
-    if train_size is not None and train_size < num_classes:
-        return False
-    if test_size is not None and test_size < num_classes:
-        return False
-    return True
+    if train_size is None or test_size is None:
+        _, counts = np.unique(labels, return_counts=True)
+        return counts.size > 0 and int(counts.min()) >= 2
+    return _stratification_fallback_reason(
+        labels,
+        train_size=train_size,
+        test_size=test_size,
+    ) is None
 
 
 def _three_way_stratified_split(
@@ -104,53 +133,85 @@ def _three_way_stratified_split(
     test_fraction: float,
     random_seed: int,
 ) -> dict[str, np.ndarray]:
-    indices = np.arange(len(labels))
-    temp_fraction = val_fraction + test_fraction
-    if temp_fraction <= 0:
+    _validate_split_fractions(val_fraction, test_fraction)
+    labels = np.asarray(labels)
+    if labels.ndim != 1 or len(labels) == 0:
+        raise ValueError("Seen split requires a non-empty one-dimensional labels array.")
+
+    indices = np.arange(len(labels), dtype=np.int64)
+    empty = np.array([], dtype=np.int64)
+    if val_fraction == 0.0 and test_fraction == 0.0:
+        return {"seen_train": indices, "seen_val": empty, "seen_test": empty}
+
+    if val_fraction == 0.0 or test_fraction == 0.0:
+        heldout_fraction = test_fraction if val_fraction == 0.0 else val_fraction
+        heldout_size = int(np.ceil(len(indices) * heldout_fraction))
+        train_size = len(indices) - heldout_size
+        if train_size < 1 or heldout_size < 1:
+            raise ValueError(
+                "Seen split needs at least one training sample and one held-out sample; "
+                f"got {len(indices)} samples at fraction {heldout_fraction}."
+            )
+        reason = _stratification_fallback_reason(
+            labels,
+            train_size=train_size,
+            test_size=heldout_size,
+        )
+        stratify_labels = labels if reason is None else None
+        if reason is not None:
+            LOGGER.warning("Seen split uses unstratified sampling: %s.", reason)
+        train_idx, heldout_idx = train_test_split(
+            indices,
+            test_size=heldout_size,
+            random_state=random_seed,
+            stratify=stratify_labels,
+        )
         return {
-            "seen_train": indices,
-            "seen_val": np.array([], dtype=np.int64),
-            "seen_test": np.array([], dtype=np.int64),
+            "seen_train": np.sort(train_idx.astype(np.int64)),
+            "seen_val": np.sort(heldout_idx.astype(np.int64)) if val_fraction > 0 else empty,
+            "seen_test": np.sort(heldout_idx.astype(np.int64)) if test_fraction > 0 else empty,
         }
 
+    temp_fraction = val_fraction + test_fraction
     temp_size = int(np.ceil(len(indices) * temp_fraction))
     train_size = len(indices) - temp_size
-    stratify_labels = (
-        labels
-        if _can_stratify(labels, train_size=train_size, test_size=temp_size)
-        else None
+    if train_size < 1 or temp_size < 2:
+        raise ValueError(
+            "Seen split needs at least one training sample and two held-out samples "
+            "when both validation and test fractions are positive; "
+            f"got {len(indices)} samples with fractions {val_fraction} and {test_fraction}."
+        )
+
+    reason = _stratification_fallback_reason(
+        labels,
+        train_size=train_size,
+        test_size=temp_size,
     )
+    stratify_labels = labels if reason is None else None
+    if reason is not None:
+        LOGGER.warning("Seen split uses unstratified first-stage sampling: %s.", reason)
     train_idx, temp_idx = train_test_split(
         indices,
-        test_size=temp_fraction,
+        test_size=temp_size,
         random_state=random_seed,
         stratify=stratify_labels,
     )
 
-    if len(temp_idx) == 0:
-        return {
-            "seen_train": np.sort(train_idx.astype(np.int64)),
-            "seen_val": np.array([], dtype=np.int64),
-            "seen_test": np.array([], dtype=np.int64),
-        }
-
-    val_ratio_within_temp = val_fraction / temp_fraction if temp_fraction else 0.0
     temp_labels = labels[temp_idx]
-    test_fraction_within_temp = max(0.0, 1.0 - val_ratio_within_temp)
-    temp_test_size = int(np.ceil(len(temp_idx) * test_fraction_within_temp))
-    temp_train_size = len(temp_idx) - temp_test_size
-    temp_stratify = (
-        temp_labels
-        if _can_stratify(
-            temp_labels,
-            train_size=temp_train_size,
-            test_size=temp_test_size,
-        )
-        else None
+    temp_test_size = int(np.ceil(len(temp_idx) * test_fraction / temp_fraction))
+    temp_test_size = min(max(1, temp_test_size), len(temp_idx) - 1)
+    temp_val_size = len(temp_idx) - temp_test_size
+    reason = _stratification_fallback_reason(
+        temp_labels,
+        train_size=temp_val_size,
+        test_size=temp_test_size,
     )
+    temp_stratify = temp_labels if reason is None else None
+    if reason is not None:
+        LOGGER.warning("Seen split uses unstratified second-stage sampling: %s.", reason)
     val_idx, test_idx = train_test_split(
         temp_idx,
-        test_size=test_fraction_within_temp,
+        test_size=temp_test_size,
         random_state=random_seed,
         stratify=temp_stratify,
     )
@@ -168,24 +229,46 @@ def _three_way_group_split(
     test_fraction: float,
     random_seed: int,
 ) -> dict[str, np.ndarray]:
+    _validate_split_fractions(val_fraction, test_fraction)
+    labels = np.asarray(labels)
+    if labels.ndim != 1 or len(labels) == 0:
+        raise ValueError("Unseen split requires a non-empty one-dimensional labels array.")
+
+    indices = np.arange(len(labels), dtype=np.int64)
+    if val_fraction == 0.0 and test_fraction == 0.0:
+        return {
+            "unseen_train": indices,
+            "unseen_val": np.array([], dtype=np.int64),
+            "unseen_test": np.array([], dtype=np.int64),
+        }
+
     unique_groups = np.unique(labels)
+    n_groups = len(unique_groups)
+    required_groups = 1 + int(val_fraction > 0.0) + int(test_fraction > 0.0)
+    if n_groups < required_groups:
+        raise ValueError(
+            "Unseen split needs at least "
+            f"{required_groups} distinct perturbation groups for the requested non-empty "
+            f"partitions; got {n_groups}."
+        )
+
     rng = np.random.default_rng(random_seed)
     rng.shuffle(unique_groups)
 
-    n_groups = len(unique_groups)
-    n_test = int(round(n_groups * test_fraction))
-    n_val = int(round(n_groups * val_fraction))
-    if n_groups >= 3:
-        n_test = max(1, n_test)
-        n_val = max(1, n_val)
-    n_test = min(n_test, max(0, n_groups - 2))
-    n_val = min(n_val, max(0, n_groups - n_test - 1))
+    n_test = 0
+    if test_fraction > 0.0:
+        max_test_groups = n_groups - 1 - int(val_fraction > 0.0)
+        n_test = min(max(1, int(round(n_groups * test_fraction))), max_test_groups)
+
+    n_val = 0
+    if val_fraction > 0.0:
+        max_val_groups = n_groups - n_test - 1
+        n_val = min(max(1, int(round(n_groups * val_fraction))), max_val_groups)
 
     test_groups = set(unique_groups[:n_test])
     val_groups = set(unique_groups[n_test : n_test + n_val])
     train_groups = set(unique_groups[n_test + n_val :])
 
-    indices = np.arange(len(labels))
     return {
         "unseen_train": indices[np.isin(labels, list(train_groups))].astype(np.int64),
         "unseen_val": indices[np.isin(labels, list(val_groups))].astype(np.int64),
@@ -199,7 +282,8 @@ def create_split_indices(
     test_fraction: float,
     random_seed: int,
 ) -> dict[str, np.ndarray]:
-    """Create both seen and unseen perturbation split indices."""
+    """Create sample-level seen and perturbation-group unseen split indices."""
+    _validate_split_fractions(val_fraction, test_fraction)
     seen = _three_way_stratified_split(
         labels=perturbation_index,
         val_fraction=val_fraction,

@@ -318,7 +318,7 @@ def test_format_and_write_project_snapshot(tmp_path: Path) -> None:
     destination = write_project_snapshot(snapshot, output_path)
 
     assert "PerturbScope-GPT snapshot" in report
-    assert "Best real unseen Pearson" in report
+    assert "Best real unseen-protocol diagnostic Pearson" in report
     assert "Transformer multi-seed unseen diagnostic Pearson / top-100 DEG overlap" in report
     assert "Transformer error-analysis highlights" in report
     assert "MAP2K6" in report

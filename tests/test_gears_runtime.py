@@ -323,5 +323,4 @@ def test_control_relative_delta_metrics_rejects_non_finite_target_delta() -> Non
         compute_control_relative_delta_metrics(
             {"D": np.ones(2, dtype=np.float32)},
             bundle,
-            control_reference_mean=np.ones(2, dtype=np.float32),
         )

@@ -44,6 +44,34 @@ def test_processed_dataset_reads_saved_bundle(tmp_path):
     assert tuple(sample["control_expression"].shape) == (2,)
     assert int(sample["perturbation_index"].item()) == 0
     assert tuple(sample["target_delta"].shape) == (2,)
+    assert int(sample["perturbation_gene_index"].item()) == -1
+    assert dataset.num_mapped_perturbations == 0
+    assert dataset.unmapped_perturbation_names == ["p1", "p2"]
+
+
+def test_processed_dataset_maps_exact_perturbation_gene_names(tmp_path):
+    np.savez_compressed(
+        tmp_path / "arrays.npz",
+        control_expression=np.array([[1.0, 2.0]], dtype=np.float32),
+        target_delta=np.array([[0.1, 0.2]], dtype=np.float32),
+        perturbation_index=np.array([0], dtype=np.int64),
+        sample_ids=np.array(["s1"]),
+    )
+    np.savez_compressed(
+        tmp_path / "splits.npz",
+        seen_train=np.array([0], dtype=np.int64),
+    )
+    (tmp_path / "metadata.json").write_text(
+        json.dumps({"gene_names": ["p1", "g2"], "perturbation_names": ["p1"]}),
+        encoding="utf-8",
+    )
+
+    dataset = ProcessedDataset(tmp_path, "seen_train")
+    sample = dataset[0]
+
+    assert int(sample["perturbation_gene_index"].item()) == 0
+    assert dataset.num_mapped_perturbations == 1
+    assert dataset.unmapped_perturbation_names == []
 
 
 def test_processed_dataset_raises_for_unknown_split(tmp_path):

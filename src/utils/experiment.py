@@ -301,7 +301,12 @@ def build_run_summary(
         train_config.setdefault("train", {})["seed"] = int(seed)
     protocol_path = Path(output_dir) / "training_protocol.json"
     if protocol_path.exists():
-        recorded_protocol = load_json(protocol_path).get("train_protocol")
+        protocol_payload = load_json(protocol_path)
+        recorded_protocol = (
+            protocol_payload.get("train_protocol")
+            if isinstance(protocol_payload, dict)
+            else None
+        )
         if recorded_protocol in {"seen", "unseen"} and recorded_protocol != split_prefix:
             raise ValueError(
                 f"Run summary requested protocol {split_prefix!r}, but training artifacts "

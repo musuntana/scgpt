@@ -69,7 +69,9 @@ def _transformer_real_summary(
     )
     if not summary_path.exists():
         return {}
-    return read_json(summary_path)
+    summary = read_json(summary_path)
+    recorded_protocol = summary.get("split", {}).get("train_protocol")
+    return summary if recorded_protocol == protocol else {}
 
 
 def _transformer_real_multiseed_summary(
@@ -101,6 +103,18 @@ def _transformer_real_error_highlights(project_root: Path) -> dict[str, dict[str
         artifact_dir = project_root / f"artifacts/transformer_{protocol}_norman2019_demo"
         summary_path = artifact_dir / f"{split_name}_error_summary.json"
         if not summary_path.exists():
+            continue
+        protocol_path = artifact_dir / "training_protocol.json"
+        run_summary_path = artifact_dir / "run_summary.json"
+        if protocol_path.exists():
+            recorded_protocol = read_json(protocol_path).get("train_protocol")
+        elif run_summary_path.exists():
+            recorded_protocol = read_json(run_summary_path).get("split", {}).get(
+                "train_protocol"
+            )
+        else:
+            recorded_protocol = None
+        if recorded_protocol != protocol:
             continue
         highlights[split_name] = build_error_highlights(read_json(summary_path))
     return highlights

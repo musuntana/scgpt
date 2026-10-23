@@ -63,6 +63,8 @@ def main() -> None:
 
     seed_everything(int(train_config_payload["train"]["seed"]))
     trainer_config = TrainerConfig.from_dict(train_config_payload)
+    bundle = load_processed_bundle(args.bundle_dir)
+    test_split_name = matching_test_split(args.split_prefix, bundle["splits"])
 
     train_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_train")
     val_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_val")
@@ -103,8 +105,7 @@ def main() -> None:
         model.to(trainer.device)
 
     # Evaluate only on the test split matching the training protocol.
-    bundle = load_processed_bundle(args.bundle_dir)
-    split_name = matching_test_split(args.split_prefix, bundle["splits"])
+    split_name = test_split_name
     eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
     eval_loader = DataLoader(
         eval_dataset,

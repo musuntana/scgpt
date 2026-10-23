@@ -8,8 +8,8 @@ import pytest
 from src.evaluation.inference import (
     build_gene_comparison_frame,
     build_perturbation_batch,
-    predict_delta_for_batch,
     load_torch_model_for_bundle,
+    predict_delta_for_batch,
     summarize_perturbation_fit,
 )
 from src.models.shared_gene_transformer import SharedGeneIdentityTransformer

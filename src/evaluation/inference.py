@@ -9,9 +9,9 @@ import pandas as pd
 import torch
 
 from src.data.gene_identity import build_unique_gene_name_index
+from src.data.io import read_json
 from src.evaluation.metrics import mean_squared_error, pearson_correlation
 from src.evaluation.protocol import validate_checkpoint_bundle_identity
-from src.data.io import read_json
 from src.models.mlp import MLPBaseline
 from src.models.shared_gene_transformer import SharedGeneIdentityTransformer
 from src.models.transformer import TransformerPerturbationModel

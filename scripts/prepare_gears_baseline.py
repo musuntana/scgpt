@@ -164,6 +164,26 @@ def _rebuild_source_and_export(
     }
 
 
+def _ensure_preflight_output_available(output: Path, filenames: list[str]) -> None:
+    """Fail before expensive preprocessing if the output path cannot be used safely."""
+    for parent in output.parents:
+        if parent.exists() and not parent.is_dir():
+            raise NotADirectoryError(
+                f"GEARS preflight output path has a non-directory parent: {parent}"
+            )
+    if output.exists() and not output.is_dir():
+        raise NotADirectoryError(
+            f"GEARS preflight output path exists and is not a directory: {output}"
+        )
+    existing = [name for name in filenames if (output / name).exists()]
+    if existing:
+        raise FileExistsError(
+            "Refusing to overwrite existing preflight artifacts: "
+            + ", ".join(existing)
+            + ". Choose a new output directory."
+        )
+
+
 def prepare_gears_preflight(
     bundle_dir: str | Path,
     output_dir: str | Path,
@@ -179,6 +199,14 @@ def prepare_gears_preflight(
 ) -> dict[str, Any]:
     source = Path(bundle_dir)
     output = Path(output_dir)
+    filenames = [
+        "gears_custom_split.pkl",
+        "gears_custom_split.json",
+        "gears_preflight.json",
+        "gears_input.h5ad",
+    ]
+    _ensure_preflight_output_available(output, filenames)
+
     bundle = load_processed_bundle(source)
     split, manifest = build_gears_split_contract(bundle)
 
@@ -211,19 +239,9 @@ def prepare_gears_preflight(
     else:
         manifest["gears_input_h5ad_exported"] = False
 
-    filenames = [
-        "gears_custom_split.pkl",
-        "gears_custom_split.json",
-        "gears_preflight.json",
-        "gears_input.h5ad",
-    ]
-    existing = [name for name in filenames if (output / name).exists()]
-    if existing:
-        raise FileExistsError(
-            "Refusing to overwrite existing preflight artifacts: "
-            + ", ".join(existing)
-            + ". Choose a new output directory."
-        )
+    # Re-check immediately before writing in case another process created
+    # an artifact while source preprocessing was running.
+    _ensure_preflight_output_available(output, filenames)
     output.mkdir(parents=True, exist_ok=True)
 
     if gears_adata is not None:

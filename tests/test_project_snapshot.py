@@ -192,13 +192,18 @@ def test_build_project_snapshot_selects_best_real_model_and_deg_story(
     )
     _write_json(
         tmp_path,
-        "artifacts/mlp_seen_norman2019_demo/run_summary.json",
-        _generic_summary(0.8374, 0.00085),
+        "artifacts/transformer_unseen_norman2019_demo/run_summary.json",
+        _transformer_summary(0.8243, 0.9755, train_protocol="unseen"),
     )
     _write_json(
         tmp_path,
-        "artifacts/xgboost_seen_norman2019_demo/xgboost_run_summary.json",
-        _xgboost_summary(0.8405, 0.00084),
+        "artifacts/mlp_unseen_norman2019_demo/run_summary.json",
+        _generic_summary(0.8374, 0.00085, train_protocol="unseen"),
+    )
+    _write_json(
+        tmp_path,
+        "artifacts/xgboost_unseen_norman2019_demo/xgboost_run_summary.json",
+        _xgboost_summary(0.8405, 0.00084, train_protocol="unseen"),
     )
     _write_json(tmp_path, "artifacts/multi_seed_report.json", _multi_seed_report())
     _write_json(
@@ -217,7 +222,7 @@ def test_build_project_snapshot_selects_best_real_model_and_deg_story(
     )
     _write_json(
         tmp_path,
-        "artifacts/transformer_seen_norman2019_demo/unseen_test_error_summary.json",
+        "artifacts/transformer_unseen_norman2019_demo/unseen_test_error_summary.json",
         _error_summary(
             "unseen_test",
             num_perturbations=10,
@@ -242,7 +247,7 @@ def test_build_project_snapshot_selects_best_real_model_and_deg_story(
         snapshot["transformer_error_highlights"]["unseen_test"]["worst_pearson_perturbation"]
         == "MAP2K6"
     )
-    assert len(snapshot["real_model_rows"]) == 3
+    assert len(snapshot["real_model_rows"]) == 4
 
 
 def test_build_project_snapshot_separates_real_and_synthetic_rows(

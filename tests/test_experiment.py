@@ -84,6 +84,11 @@ def test_build_run_summary_collects_required_fields(tmp_path):
         b"checkpoint"
     ).hexdigest()
     assert provenance["inputs"]["raw_dataset"]["status"] in {"available", "not_found"}
+    split_audit = summary["split"]["audit"]
+    assert split_audit["sample_count"] == 1
+    assert split_audit["sample_counts"]["seen_train"] == 1
+    assert split_audit["integrity"]["seen"]["complete_sample_coverage"] is True
+    assert split_audit["seen_stratification"]["status"] == "not_recorded_legacy_bundle"
 
     output_path = write_run_summary(summary, output_dir / "run_summary.json")
     saved = json.loads(output_path.read_text(encoding="utf-8"))

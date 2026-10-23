@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 
+from src.data.pairing import save_processed_bundle
 from src.data.synthetic import (
     SyntheticDemoConfig,
     build_synthetic_deg_artifact,
@@ -9,7 +12,7 @@ from src.data.synthetic import (
 )
 
 
-def test_generate_synthetic_processed_bundle_returns_expected_shapes():
+def test_generate_synthetic_processed_bundle_returns_expected_shapes(tmp_path):
     bundle, perturbation_effects = generate_synthetic_processed_bundle(
         SyntheticDemoConfig(
             num_genes=12,
@@ -33,6 +36,21 @@ def test_generate_synthetic_processed_bundle_returns_expected_shapes():
         "unseen_test",
     }
     assert set(perturbation_effects) == {"JUN", "STAT1", "IRF1"}
+    diagnostics = bundle.split_diagnostics
+    assert diagnostics["sample_count"] == 18
+    assert diagnostics["sample_counts"]["seen_train"] > 0
+    assert diagnostics["integrity"]["seen"]["complete_sample_coverage"] is True
+    assert diagnostics["integrity"]["unseen"]["perturbation_groups_disjoint"] is True
+    assert diagnostics["seen_stratification"]["status"] in {
+        "stratified",
+        "partially_stratified_fallback",
+        "unstratified_fallback",
+    }
+
+    bundle_path = tmp_path / "processed"
+    save_processed_bundle(bundle, bundle_path)
+    saved_metadata = json.loads((bundle_path / "metadata.json").read_text(encoding="utf-8"))
+    assert saved_metadata["split_diagnostics"]["sample_count"] == 18
 
 
 def test_build_synthetic_deg_artifact_contains_expected_schema():

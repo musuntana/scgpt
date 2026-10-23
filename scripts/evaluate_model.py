@@ -12,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.data.io import read_json
 from src.data.torch_dataset import ProcessedDataset
 from src.evaluation.deg import load_deg_artifact
 from src.evaluation.error_analysis import (
@@ -83,6 +84,22 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     train_config = load_yaml(args.train_config)
+    checkpoint_path = Path(args.checkpoint_path)
+    run_summary_path = checkpoint_path.parent / "run_summary.json"
+    if run_summary_path.exists():
+        run_summary = read_json(run_summary_path)
+        train_protocol = run_summary.get("split", {}).get("train_protocol")
+        requested_protocol = args.split_name.split("_", maxsplit=1)[0]
+        if (
+            train_protocol in {"seen", "unseen"}
+            and requested_protocol in {"seen", "unseen"}
+            and requested_protocol != train_protocol
+        ):
+            raise ValueError(
+                f"Checkpoint was trained with the {train_protocol!r} protocol, but "
+                f"{args.split_name!r} belongs to {requested_protocol!r}. Evaluate the "
+                "matching test split or provide a checkpoint trained for that protocol."
+            )
     dataset = ProcessedDataset(args.bundle_dir, args.split_name)
     loader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0)
 

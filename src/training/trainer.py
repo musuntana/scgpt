@@ -124,7 +124,6 @@ class Trainer:
 
         for batch_idx, batch in enumerate(loader):
             control_expression = batch["control_expression"].to(self.device)
-            perturbation_index = batch["perturbation_index"].to(self.device)
             target_delta = batch["target_delta"].to(self.device)
 
             self.optimizer.zero_grad()
@@ -198,7 +197,6 @@ class Trainer:
         targets: list[np.ndarray] = []
         perturbations: list[np.ndarray] = []
         for batch in loader:
-            control_expression = batch["control_expression"].to(self.device)
             perturbation_index = batch["perturbation_index"].to(self.device)
             target_delta = batch["target_delta"].to(self.device)
             batch_predictions = self._forward_batch(batch)

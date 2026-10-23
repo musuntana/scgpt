@@ -320,7 +320,11 @@ def run_gears_baseline(
             f"{missing_conditions}. No training was started."
         )
 
-    pert_data.prepare_split(split="custom", split_dict_path=str(validated_split_path))
+    pert_data.prepare_split(
+        split="custom",
+        seed=seed,
+        split_dict_path=str(validated_split_path),
+    )
     for partition in ("train", "val", "test"):
         if set(pert_data.set2conditions[partition]) != set(split_json[partition]):
             raise RuntimeError(

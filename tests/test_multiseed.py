@@ -13,11 +13,11 @@ from src.utils.multiseed import (
 def test_build_multiseed_report_aggregates_mean_and_std():
     rows = [
         {
-            "model": "transformer_seen_norman2019_demo",
-            "base_model_label": "transformer_seen_norman2019",
+            "model": "transformer_unseen_norman2019_demo",
+            "base_model_label": "transformer_unseen_norman2019",
             "model_type": "transformer",
             "dataset_name": "scperturb_norman2019",
-            "train_protocol": "seen",
+            "train_protocol": "unseen",
             "seed": 42,
             "seen_pearson": 0.61,
             "seen_mse": 0.0069,
@@ -29,11 +29,11 @@ def test_build_multiseed_report_aggregates_mean_and_std():
             "unseen_top100_deg": 0.975,
         },
         {
-            "model": "transformer_seen_norman2019_seed7",
-            "base_model_label": "transformer_seen_norman2019",
+            "model": "transformer_unseen_norman2019_seed7",
+            "base_model_label": "transformer_unseen_norman2019",
             "model_type": "transformer",
             "dataset_name": "scperturb_norman2019",
-            "train_protocol": "seen",
+            "train_protocol": "unseen",
             "seed": 7,
             "seen_pearson": 0.60,
             "seen_mse": 0.0070,
@@ -45,11 +45,11 @@ def test_build_multiseed_report_aggregates_mean_and_std():
             "unseen_top100_deg": 0.97,
         },
         {
-            "model": "transformer_seen_norman2019_seed21",
-            "base_model_label": "transformer_seen_norman2019",
+            "model": "transformer_unseen_norman2019_seed21",
+            "base_model_label": "transformer_unseen_norman2019",
             "model_type": "transformer",
             "dataset_name": "scperturb_norman2019",
-            "train_protocol": "seen",
+            "train_protocol": "unseen",
             "seed": 21,
             "seen_pearson": 0.62,
             "seen_mse": 0.0068,
@@ -107,6 +107,8 @@ def test_build_multiseed_report_aggregates_mean_and_std():
     synthetic_report = next(row for row in report if row["dataset_name"] == "synthetic_demo")
     assert synthetic_report["num_runs"] == 2
     assert synthetic_report["seeds"] == [3, 9]
+    assert abs(synthetic_report["seen_pearson_mean"] - 0.985) < 1e-6
+    assert "unseen_pearson_mean" not in synthetic_report
 
 
 def test_format_multiseed_report_handles_empty_groups():
@@ -118,11 +120,11 @@ def test_select_multiseed_group_filters_by_dataset_and_model() -> None:
     report_rows = build_multiseed_report(
         [
             {
-                "model": "transformer_seen_norman2019_demo",
-                "base_model_label": "transformer_seen_norman2019",
+                "model": "transformer_unseen_norman2019_demo",
+                "base_model_label": "transformer_unseen_norman2019",
                 "model_type": "transformer",
                 "dataset_name": "scperturb_norman2019",
-                "train_protocol": "seen",
+                "train_protocol": "unseen",
                 "seed": 42,
                 "seen_pearson": 0.61,
                 "seen_mse": 0.0069,
@@ -134,11 +136,11 @@ def test_select_multiseed_group_filters_by_dataset_and_model() -> None:
                 "unseen_top100_deg": 0.975,
             },
             {
-                "model": "transformer_seen_norman2019_seed7",
-                "base_model_label": "transformer_seen_norman2019",
+                "model": "transformer_unseen_norman2019_seed7",
+                "base_model_label": "transformer_unseen_norman2019",
                 "model_type": "transformer",
                 "dataset_name": "scperturb_norman2019",
-                "train_protocol": "seen",
+                "train_protocol": "unseen",
                 "seed": 7,
                 "seen_pearson": 0.60,
                 "seen_mse": 0.0070,
@@ -187,7 +189,7 @@ def test_select_multiseed_group_filters_by_dataset_and_model() -> None:
     real_group = select_multiseed_group(
         report_rows,
         dataset_name="scperturb_norman2019",
-        train_protocol="seen",
+        train_protocol="unseen",
         model_type="transformer",
     )
     synthetic_group = select_multiseed_group(

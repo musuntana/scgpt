@@ -134,7 +134,7 @@ def build_interview_script(
                     f"Results: {best_model} is the best seen-protocol baseline at {best_real_seen}; "
                     f"the Transformer seen-test Pearson is {transformer_seen}, with top-100 DEG overlap "
                     f"{transformer_deg100}{transformer_multiseed_suffix}. I do not present the current "
-                    f"unseen-protocol metric as validated zero-shot generalization."
+                    f"unseen-protocol diagnostic metric as validated zero-shot generalization."
                 ),
                 (
                     f"Failure analysis: {unseen_error_story}."

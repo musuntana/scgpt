@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 
+from src.data.pairing import _summarize_split_integrity
 from src.utils.config import load_yaml
 
 
@@ -228,20 +229,43 @@ def _load_bundle_overview(bundle_dir: str | Path) -> dict[str, Any]:
     if not isinstance(raw_metadata, dict):
         raise ValueError(f"Expected metadata.json to be a dict, got {type(raw_metadata)}")
     metadata: dict[str, Any] = raw_metadata
-    arrays = np.load(bundle_path / "arrays.npz", allow_pickle=False)
-    splits = np.load(bundle_path / "splits.npz", allow_pickle=False)
 
-    split_sizes = {
-        split_name: int(split_indices.shape[0])
-        for split_name, split_indices in splits.items()
-    }
+    with (
+        np.load(bundle_path / "arrays.npz", allow_pickle=False) as arrays,
+        np.load(bundle_path / "splits.npz", allow_pickle=False) as splits,
+    ):
+        labels = arrays["perturbation_index"].copy()
+        split_arrays = {name: splits[name].copy() for name in splits.files}
+        split_sizes = {
+            split_name: int(split_indices.shape[0])
+            for split_name, split_indices in split_arrays.items()
+        }
+        num_samples = int(labels.shape[0])
+
+    recorded_diagnostics = metadata.get("split_diagnostics")
+    if isinstance(recorded_diagnostics, dict) and recorded_diagnostics.get(
+        "seen_stratification"
+    ):
+        split_diagnostics = recorded_diagnostics
+    else:
+        split_diagnostics = _summarize_split_integrity(labels, split_arrays)
+        split_diagnostics["seen_stratification"] = {
+            "status": "not_recorded_legacy_bundle",
+            "fallback_stage": None,
+            "fallback_reason": None,
+        }
+        split_diagnostics["unseen_group_split"] = {
+            "status": "not_recorded_legacy_bundle",
+            "fallback_reason": None,
+        }
 
     return {
         "bundle_dir": str(bundle_path),
-        "num_samples": int(arrays["perturbation_index"].shape[0]),
+        "num_samples": num_samples,
         "num_genes": int(len(metadata["gene_names"])),
         "num_perturbations": int(len(metadata["perturbation_names"])),
         "split_sizes": split_sizes,
+        "split_diagnostics": split_diagnostics,
     }
 
 
@@ -282,6 +306,7 @@ def build_run_summary(
 
     split_config = data_config["split"]
     split_protocol_key = f"{split_prefix}_protocol"
+    bundle_overview = _load_bundle_overview(bundle_dir)
 
     return {
         "dataset": {
@@ -299,6 +324,7 @@ def build_run_summary(
             "val_fraction": split_config["val_fraction"],
             "test_fraction": split_config["test_fraction"],
             "random_seed": split_config["random_seed"],
+            "audit": bundle_overview["split_diagnostics"],
         },
         "model": {
             "model_type": model_type,
@@ -306,7 +332,7 @@ def build_run_summary(
         },
         "training": train_config["train"],
         "artifacts": {
-            "bundle": _load_bundle_overview(bundle_dir),
+            "bundle": bundle_overview,
             "output_dir": str(Path(output_dir)),
             "checkpoint_path": str(Path(checkpoint_path)),
             "history_path": str(Path(history_path)) if history_path is not None else None,

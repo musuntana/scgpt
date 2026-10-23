@@ -13,8 +13,8 @@ from src.data.io import load_anndata
 from src.data.pairing import build_training_bundle, save_processed_bundle
 from src.data.preprocess import prepare_adata, select_hvgs_from_training_partitions
 from src.data.schema import resolve_schema
-from src.utils.config import load_yaml
 from src.integrations.gears_export import build_gears_input_adata, validate_rebuilt_bundle
+from src.utils.config import load_yaml
 
 
 def _bundle() -> dict:

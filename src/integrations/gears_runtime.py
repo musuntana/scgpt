@@ -45,7 +45,13 @@ def attach_train_only_loss_metadata(adata: Any) -> dict[str, Any]:
         raise ValueError("scgpt_split must contain only train, val and test.")
     if len(set(cell_types.tolist())) != 1:
         raise ValueError("GEARS runtime supports one cell type per run.")
-    if not np.all(np.isfinite(np.asarray(adata.X.toarray() if sparse.issparse(adata.X) else adata.X))):
+    expression_matrix = adata.X
+    finite_values = (
+        expression_matrix.data
+        if sparse.issparse(expression_matrix)
+        else np.asarray(expression_matrix)
+    )
+    if not np.all(np.isfinite(finite_values)):
         raise ValueError("GEARS expression matrix contains non-finite values.")
 
     if not np.any((conditions == "ctrl") & (splits == "train")):

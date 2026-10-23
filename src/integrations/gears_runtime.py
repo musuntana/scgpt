@@ -117,7 +117,7 @@ def validate_gears_graph_coverage(
     gears_perturbation_names: set[str] | list[str] | tuple[str, ...],
 ) -> dict[str, Any]:
     """Fail closed when GEARS' GO graph cannot represent any held-out target."""
-    available = set(str(name) for name in gears_perturbation_names)
+    available = {str(name) for name in gears_perturbation_names}
     required = set(perturbation_names)
     missing = sorted(required - available)
     return {

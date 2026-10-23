@@ -107,6 +107,15 @@ def test_train_only_metadata_checks_sparse_matrix_without_densifying(monkeypatch
     assert report["de_statistics_computed"] is False
 
 
+def test_train_only_metadata_rejects_non_finite_sparse_values():
+    adata = _exported()
+    adata.X = sparse.csr_matrix(adata.X)
+    adata.X.data[0] = np.nan
+
+    with pytest.raises(ValueError, match="non-finite"):
+        attach_train_only_loss_metadata(adata)
+
+
 def test_train_only_metadata_rejects_conditions_crossing_partitions():
     adata = _exported()
     adata.obs.loc["s0", "scgpt_split"] = "val"

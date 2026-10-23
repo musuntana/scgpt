@@ -147,7 +147,9 @@ def build_gears_split_contract(
         "protocol_matched_real_metrics_available": False,
         "comparison_eligible": False,
         "blocking_checks": [
+            "replace GEARS default all-condition DE/dropout preprocessing with a leakage-audited train-only path",
             "GEARS GO-graph inclusion of every held-out perturbation",
+            "train-only co-expression graph construction",
             "source AnnData cell and gene identity mapping",
             "identical sample split and expression target",
             "real model execution and protocol-matched evaluation",

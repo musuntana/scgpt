@@ -109,6 +109,7 @@ def main() -> None:
     )
     bundle, perturbation_effects = generate_synthetic_processed_bundle(synthetic_config)
     save_processed_bundle(bundle, args.bundle_dir)
+    test_split_name = matching_test_split("seen", bundle.splits)
     LOGGER.info("Saved synthetic bundle to %s", args.bundle_dir)
 
     trainer_config = TrainerConfig.from_dict(train_config)
@@ -136,11 +137,23 @@ def main() -> None:
     )
     trainer = Trainer(model=model, config=trainer_config, output_dir=output_dir)
     trainer.fit(train_loader=train_loader, val_loader=val_loader)
+    with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "schema_version": 1,
+                "train_protocol": "seen",
+                "checkpoint_selection_split": "seen_val",
+                "test_split": test_split_name,
+                "training_seed": int(args.random_seed),
+            },
+            handle,
+            indent=2,
+        )
 
     checkpoint_path = output_dir / "best_model.pt"
     trainer.model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
 
-    split_name = matching_test_split("seen", bundle.splits)
+    split_name = test_split_name
     eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
     eval_loader = DataLoader(
         eval_dataset,

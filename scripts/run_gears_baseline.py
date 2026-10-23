@@ -133,7 +133,10 @@ def validate_bundle_artifact_hashes(
     bundle_path = Path(bundle_dir)
     for filename in EXPECTED_BUNDLE_ARTIFACTS:
         expected_sha = artifact_hashes[filename]
-        if not isinstance(expected_sha, str) or re.fullmatch(r"[0-9a-f]{64}", expected_sha) is None:
+        if (
+            not isinstance(expected_sha, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected_sha) is None
+        ):
             raise ValueError(
                 f"GEARS preflight bundle artifact hash is not a valid SHA-256 digest: {filename}"
             )

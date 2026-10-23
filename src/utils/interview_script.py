@@ -21,24 +21,24 @@ def build_interview_script(
     assets = snapshot["assets"]
     commands = snapshot["commands"]
     unseen_error = snapshot.get("transformer_error_highlights", {}).get("unseen_test", {})
-    best_model = headline.get("best_real_unseen_model") or "best baseline"
-    best_real_unseen = _format_metric(headline.get("best_real_unseen_pearson"))
-    transformer_unseen = _format_metric(headline.get("transformer_unseen_pearson"))
+    best_model = headline.get("best_real_seen_model") or "best model"
+    best_real_seen = _format_metric(headline.get("best_real_seen_pearson"))
+    transformer_seen = _format_metric(headline.get("transformer_seen_pearson"))
     transformer_deg100 = _format_metric(
-        headline.get("transformer_unseen_top100_deg_overlap")
+        headline.get("transformer_seen_top100_deg_overlap")
     )
-    transformer_multiseed_runs = headline.get("transformer_multiseed_num_runs")
-    transformer_multiseed_unseen = _format_mean_std(
-        headline.get("transformer_multiseed_unseen_pearson_mean"),
-        headline.get("transformer_multiseed_unseen_pearson_std"),
+    transformer_multiseed_runs = headline.get("transformer_multiseed_seen_num_runs")
+    transformer_multiseed_seen = _format_mean_std(
+        headline.get("transformer_multiseed_seen_pearson_mean"),
+        headline.get("transformer_multiseed_seen_pearson_std"),
     )
     transformer_multiseed_deg100 = _format_mean_std(
-        headline.get("transformer_multiseed_unseen_top100_deg_mean"),
-        headline.get("transformer_multiseed_unseen_top100_deg_std"),
+        headline.get("transformer_multiseed_seen_top100_deg_mean"),
+        headline.get("transformer_multiseed_seen_top100_deg_std"),
     )
     transformer_multiseed_suffix = _build_multiseed_suffix(
         transformer_multiseed_runs,
-        transformer_multiseed_unseen,
+        transformer_multiseed_seen,
         transformer_multiseed_deg100,
     )
     unseen_error_story = _build_unseen_error_story(unseen_error)
@@ -47,7 +47,7 @@ def build_interview_script(
     live_demo_script = [
         f"Start with the repository snapshot: `{commands['snapshot']}`.",
         f"Open the model-comparison figure: `{assets['real_comparison_figure']['path']}`.",
-        "Explain that unseen perturbation evaluation is the main generalization metric.",
+        "Explain that seen-protocol results measure sample-level generalization for known perturbations; unseen-protocol scores remain diagnostic until the model has a shared perturbation representation.",
         f"Point to the Transformer inference preview: `{assets['real_inference_figure']['path']}`.",
         f"Launch the app: `{commands['app']}`.",
         "If the app is using synthetic fallback artifacts, say that explicitly before discussing any numbers.",
@@ -66,6 +66,7 @@ def build_interview_script(
         "The ranking is heuristic and explicitly does not treat attention as causal evidence.",
         "This is a local-first MVP, not a cloud-scale or multi-dataset training platform.",
         "Synthetic showcase artifacts are for offline engineering demos only and should not be presented as biological evidence.",
+        "The categorical perturbation-ID embedding does not support validated zero-shot prediction for perturbation identities absent from training; unseen-protocol scores are diagnostic only.",
     ]
     if unseen_error_story:
         honest_limitations.append(
@@ -92,10 +93,11 @@ def build_interview_script(
                     "batch-aware control-mean pairing, delta-expression targets, and split export."
                 ),
                 (
-                    f"Implemented Transformer, MLP, and XGBoost baselines with seen/unseen "
-                    f"perturbation evaluation; best unseen Pearson = {best_real_unseen} "
-                    f"({best_model}), while the Transformer reached top-100 DEG overlap = "
-                    f"{transformer_deg100}{transformer_multiseed_suffix}."
+                    f"Implemented Transformer, MLP, and XGBoost baselines with protocol-matched "
+                    f"evaluation; best seen-protocol Pearson = {best_real_seen} ({best_model}). "
+                    f"The Transformer reached seen-test top-100 DEG overlap = {transformer_deg100}"
+                    f"{transformer_multiseed_suffix}. Unseen results remain diagnostic, not "
+                    f"validated zero-shot evidence."
                 ),
                 (
                     "Shipped an interview-ready local product surface with Streamlit, notebooks, "
@@ -106,9 +108,10 @@ def build_interview_script(
                 "I built a local-first single-cell perturbation response prediction project called PerturbScope-GPT.",
                 "The pipeline starts from AnnData preprocessing and ends with model comparison, DEG-based target ranking, and a Streamlit demo.",
                 (
-                    f"On real Norman2019 data, all three models exceed 0.82 Pearson on unseen perturbations; "
-                    f"the best is {best_model} at {best_real_unseen}, and the Transformer gets "
-                    f"{transformer_deg100} top-100 DEG overlap."
+                    f"On real Norman2019 data, the best seen-protocol test Pearson is "
+                    f"{best_real_seen} ({best_model}); the Transformer gets {transformer_deg100} "
+                    f"top-100 DEG overlap. Unseen-protocol runs are kept separate, but the current "
+                    f"categorical ID embedding does not yet support a zero-shot performance claim."
                 ),
                 "I focused on both modeling and engineering quality, so the repo is reproducible, testable, and demo-ready on a single machine.",
             ],
@@ -123,13 +126,15 @@ def build_interview_script(
                     "and additive perturbation embeddings, compared against MLP and XGBoost baselines."
                 ),
                 (
-                    "Evaluation: seen and unseen perturbation splits, per-perturbation Pearson and MSE, "
-                    "plus top-k DEG overlap to test whether predicted deltas recover biologically relevant genes."
+                    "Evaluation: each run reports only the test split matching its training protocol. "
+                    "Seen results measure sample-level generalization for known perturbations; the current "
+                    "unseen protocol is diagnostic because held-out categorical IDs have untrained embeddings."
                 ),
                 (
-                    f"Results: {best_model} is the best unseen-Pearson baseline at {best_real_unseen}; "
-                    f"the Transformer remains competitive at {transformer_unseen} and is strong on DEG recovery "
-                    f"with top-100 overlap {transformer_deg100}{transformer_multiseed_suffix}."
+                    f"Results: {best_model} is the best seen-protocol baseline at {best_real_seen}; "
+                    f"the Transformer seen-test Pearson is {transformer_seen}, with top-100 DEG overlap "
+                    f"{transformer_deg100}{transformer_multiseed_suffix}. I do not present the current "
+                    f"unseen-protocol metric as validated zero-shot generalization."
                 ),
                 (
                     f"Failure analysis: {unseen_error_story}."
@@ -143,11 +148,12 @@ def build_interview_script(
             ],
             "interviewer_qa": [
                 {
-                    "question": "Why keep the Transformer if XGBoost has the best unseen Pearson?",
+                    "question": "Why keep the Transformer if a simpler baseline scores higher on the seen split?",
                     "answer": (
-                        "Because the project goal is not just leaderboard performance; it is to demonstrate "
-                        "a modern token-based perturbation model, compare it against strong baselines, and show "
-                        "that the Transformer remains competitive while performing well on DEG recovery."
+                        "Because the project compares models under the same valid evaluation protocol rather "
+                        "than using a cross-protocol number. The Transformer is an architecture baseline and "
+                        "its biological utility must be judged on matching-protocol metrics; unseen-ID results "
+                        "remain diagnostic until the input representation is fixed."
                     ),
                 },
                 {
@@ -180,8 +186,8 @@ def build_interview_script(
                 ),
                 (
                     f"Implemented multi-model benchmarking with Transformer, MLP, and XGBoost; "
-                    f"best unseen Pearson = {best_real_unseen} ({best_model}) with reproducible run summaries "
-                    f"and structured result exports{transformer_multiseed_suffix}."
+                    f"best seen-protocol Pearson = {best_real_seen} ({best_model}) with reproducible run "
+                    f"summaries and structured result exports{transformer_multiseed_suffix}."
                 ),
                 (
                     "Added engineering guardrails including tests, mypy, ruff, pre-commit, CI, and "
@@ -192,8 +198,9 @@ def build_interview_script(
                 "I built PerturbScope-GPT as an end-to-end ML system rather than just a training script.",
                 "It has explicit pipeline stages, reproducible artifacts, multiple baselines, quality gates, and a live demo surface.",
                 (
-                    f"On real unseen data, the best model reaches {best_real_unseen} Pearson, while the "
-                    f"Transformer still delivers strong biological recovery with {transformer_deg100} top-100 DEG overlap."
+                    f"On the matching seen test split, the best model reaches {best_real_seen} Pearson, while "
+                    f"the Transformer has {transformer_deg100} top-100 DEG overlap. Unseen metrics are not "
+                    f"presented as validated zero-shot results for the current categorical-ID architecture."
                 ),
                 "The main value is that the project is understandable, testable, and demoable on a single machine.",
             ],
@@ -208,8 +215,9 @@ def build_interview_script(
                     "to understand trade-offs instead of committing to one model blindly."
                 ),
                 (
-                    "Evaluation design: separate seen and unseen perturbations, use per-perturbation metrics, "
-                    "and add DEG overlap so the output quality is not judged only by MSE."
+                    "Evaluation design: separate seen and unseen runs, report only protocol-matched test metrics, "
+                    "and add DEG overlap so output quality is not judged only by MSE. Unseen runs remain diagnostic "
+                    "until the model can encode held-out perturbation identities."
                 ),
                 (
                     f"Debuggability: saved error-analysis artifacts show that {unseen_error_story}."
@@ -323,11 +331,11 @@ def format_interview_script(script: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _build_multiseed_suffix(num_runs: Any, unseen_text: str, deg100_text: str) -> str:
+def _build_multiseed_suffix(num_runs: Any, seen_text: str, deg100_text: str) -> str:
     if num_runs is None:
         return ""
     return (
-        f"; across {num_runs} real Transformer seeds, unseen Pearson = {unseen_text} "
+        f"; across {num_runs} real Transformer seeds, seen Pearson = {seen_text} "
         f"and top-100 DEG overlap = {deg100_text}"
     )
 
@@ -344,7 +352,7 @@ def _build_unseen_error_story(unseen_error: dict[str, Any]) -> str:
     worst_pearson = unseen_error.get("worst_pearson_perturbation") or "n/a"
     worst_mse = unseen_error.get("worst_mse_perturbation") or "n/a"
     return (
-        f"unseen misses are dominated by {dominant_label}{count_text}, "
+        f"unseen-protocol diagnostic misses are dominated by {dominant_label}{count_text}, "
         f"with worst Pearson on {worst_pearson} and worst MSE on {worst_mse}"
     )
 

@@ -86,11 +86,15 @@ def main() -> None:
     args = parse_args()
     train_config = load_yaml(args.train_config)
     checkpoint_path = Path(args.checkpoint_path)
+    protocol_path = checkpoint_path.parent / "training_protocol.json"
     run_summary_path = checkpoint_path.parent / "run_summary.json"
-    if run_summary_path.exists():
+    train_protocol = None
+    if protocol_path.exists():
+        train_protocol = read_json(protocol_path).get("train_protocol")
+    elif run_summary_path.exists():
         run_summary = read_json(run_summary_path)
         train_protocol = run_summary.get("split", {}).get("train_protocol")
-        validate_split_matches_training_protocol(train_protocol, args.split_name)
+    validate_split_matches_training_protocol(train_protocol, args.split_name)
     dataset = ProcessedDataset(args.bundle_dir, args.split_name)
     loader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0)
 

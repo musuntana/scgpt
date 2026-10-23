@@ -17,6 +17,11 @@ from matplotlib.axes import Axes
 from src.data.io import read_json
 
 
+def _is_sha256_digest(value: object) -> bool:
+    """Return whether a value is a lowercase SHA-256 hex digest."""
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
 def _extract_model_type(summary: dict, label: str) -> str:
     model_section = summary.get("model", {})
     if isinstance(model_section, dict) and model_section.get("model_type") is not None:
@@ -133,11 +138,23 @@ def extract_gears_summary_row(summary: dict, label: str) -> dict | None:
         or not isinstance(model_config, dict)
         or not isinstance(runtime_versions, dict)
         or not isinstance(gene_order, dict)
-        or not isinstance(bundle_hashes, dict)
-        or any(
-            not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None
-            for value in required_hashes
+        or not all(
+            _is_sha256_digest(gene_order.get(key))
+            for key in (
+                "bundle_gene_ids_sha256",
+                "input_gene_symbols_sha256",
+                "gears_gene_symbols_sha256",
+            )
         )
+        or not isinstance(bundle_hashes, dict)
+        or not bundle_hashes
+        or any(
+            not isinstance(name, str)
+            or not name.strip()
+            or not _is_sha256_digest(value)
+            for name, value in bundle_hashes.items()
+        )
+        or any(not _is_sha256_digest(value) for value in required_hashes)
     ):
         return None
 

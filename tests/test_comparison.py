@@ -191,6 +191,51 @@ def test_extract_gears_summary_row_separates_different_inputs():
     assert first["base_model_label"] != second["base_model_label"]
 
 
+@pytest.mark.parametrize(
+    "bundle_hashes",
+    [
+        {},
+        {"arrays.npz": "not-a-sha256"},
+        {"": "1" * 64},
+    ],
+)
+def test_extract_gears_summary_row_rejects_invalid_bundle_artifact_hashes(bundle_hashes):
+    manifest = _gears_manifest()
+    manifest["bundle_artifacts_sha256"] = bundle_hashes
+
+    assert extract_gears_summary_row(manifest, "gears_runs/seed42") is None
+
+
+@pytest.mark.parametrize(
+    "hash_key",
+    [
+        "bundle_gene_ids_sha256",
+        "input_gene_symbols_sha256",
+        "gears_gene_symbols_sha256",
+    ],
+)
+def test_extract_gears_summary_row_rejects_missing_gene_order_hashes(hash_key):
+    manifest = _gears_manifest()
+    manifest["gene_order"].pop(hash_key)
+
+    assert extract_gears_summary_row(manifest, "gears_runs/seed42") is None
+
+
+@pytest.mark.parametrize(
+    "hash_key",
+    [
+        "bundle_gene_ids_sha256",
+        "input_gene_symbols_sha256",
+        "gears_gene_symbols_sha256",
+    ],
+)
+def test_extract_gears_summary_row_rejects_invalid_gene_order_hashes(hash_key):
+    manifest = _gears_manifest()
+    manifest["gene_order"][hash_key] = "not-a-sha256"
+
+    assert extract_gears_summary_row(manifest, "gears_runs/seed42") is None
+
+
 def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data))

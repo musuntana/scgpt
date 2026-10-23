@@ -5,6 +5,8 @@ can be tested independently from the Streamlit app.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections.abc import Sequence
 from pathlib import Path
@@ -96,6 +98,138 @@ def extract_summary_row(summary: dict, label: str) -> dict | None:
     }
 
 
+def extract_gears_summary_row(summary: dict, label: str) -> dict | None:
+    """Extract comparable-field diagnostics from a GEARS run manifest.
+
+    GEARS manifests are kept separate from the standard model comparison schema.
+    Only the matched-control delta metrics are mapped to the unseen fields; the
+    absolute-expression metrics are never substituted into those fields.
+    """
+    delta_metrics = summary.get("delta_metrics")
+    if (
+        not isinstance(delta_metrics, dict)
+        or delta_metrics.get("metric_space") != "control_relative_delta_expression"
+    ):
+        return None
+
+    source_hash = summary.get("source_h5ad_sha256")
+    input_hash = summary.get("input_h5ad_sha256")
+    split_hash = summary.get("split_json_sha256")
+    seed = _extract_seed(summary)
+    model_config = summary.get("model_config")
+    runtime_versions = summary.get("runtime_versions")
+    gene_order = summary.get("gene_order")
+    bundle_hashes = summary.get("bundle_artifacts_sha256")
+    required_hashes = (
+        source_hash,
+        input_hash,
+        split_hash,
+        summary.get("preflight_manifest_sha256"),
+        summary.get("preflight_split_pickle_sha256"),
+        summary.get("validated_split_pickle_sha256"),
+    )
+    if (
+        seed is None
+        or not isinstance(model_config, dict)
+        or not isinstance(runtime_versions, dict)
+        or not isinstance(gene_order, dict)
+        or not isinstance(bundle_hashes, dict)
+        or any(
+            not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None
+            for value in required_hashes
+        )
+    ):
+        return None
+
+    source_hash_text = str(source_hash)
+    input_hash_text = str(input_hash)
+    split_hash_text = str(split_hash)
+
+    def finite_metric(key: str) -> float | None:
+        value = delta_metrics.get(key)
+        if not isinstance(value, (int, float)) or not np.isfinite(float(value)):
+            return None
+        return float(value)
+
+    unseen_pearson = finite_metric("pearson_per_perturbation")
+    unseen_mse = finite_metric("mse_per_perturbation")
+    if unseen_pearson is None or unseen_mse is None:
+        return None
+
+    # Keep seeds together only when data, split, gene order, runtime, device,
+    # and training configuration match. Graph hashes are recorded separately so
+    # seed-dependent graph changes can be surfaced rather than silently splitting
+    # each seed into its own group.
+    identity = {
+        "source_h5ad_sha256": source_hash_text,
+        "input_h5ad_sha256": input_hash_text,
+        "preflight_manifest_sha256": summary["preflight_manifest_sha256"],
+        "preflight_split_pickle_sha256": summary["preflight_split_pickle_sha256"],
+        "validated_split_pickle_sha256": summary["validated_split_pickle_sha256"],
+        "split_json_sha256": split_hash_text,
+        "bundle_artifacts_sha256": bundle_hashes,
+        "model_config": model_config,
+        "device": summary.get("device"),
+        "runtime_versions": runtime_versions,
+        "gene_order": {
+            key: gene_order.get(key)
+            for key in (
+                "bundle_gene_ids_sha256",
+                "input_gene_symbols_sha256",
+                "gears_gene_symbols_sha256",
+            )
+        },
+        "metric_space": delta_metrics.get("metric_space"),
+        "prediction_conversion": delta_metrics.get("prediction_conversion"),
+        "target_source": delta_metrics.get("target_source"),
+    }
+    identity_payload = json.dumps(
+        identity,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    protocol_id = hashlib.sha256(identity_payload.encode("utf-8")).hexdigest()[:12]
+    graph_provenance = summary.get("graph_provenance", {})
+    if not isinstance(graph_provenance, dict):
+        graph_provenance = {}
+    target_alignment = summary.get("target_alignment", {})
+    if not isinstance(target_alignment, dict):
+        target_alignment = {}
+
+    target_equivalence_verified = (
+        summary.get("target_equivalence_verified") is True
+        and target_alignment.get("real_data_target_equivalence_verified") is True
+    )
+    comparison_eligible = (
+        summary.get("comparison_eligible") is True and target_equivalence_verified
+    )
+    return {
+        "model": label,
+        "base_model_label": f"gears_unseen_{protocol_id}",
+        "model_type": "gears",
+        "dataset_name": f"source-{source_hash_text[:12]}",
+        "train_protocol": "unseen",
+        "seed": int(seed),
+        "seen_pearson": None,
+        "seen_mse": None,
+        "unseen_pearson": unseen_pearson,
+        "unseen_mse": unseen_mse,
+        "seen_top20_deg": None,
+        "seen_top100_deg": None,
+        "unseen_top20_deg": None,
+        "unseen_top100_deg": None,
+        "comparison_protocol_id": protocol_id,
+        "source_h5ad_sha256": source_hash_text,
+        "input_h5ad_sha256": input_hash_text,
+        "split_json_sha256": split_hash_text,
+        "comparison_eligible": comparison_eligible,
+        "target_equivalence_verified": target_equivalence_verified,
+        "run_status": summary.get("status"),
+        "coexpression_graph_sha256": graph_provenance.get("coexpression_graph_sha256"),
+    }
+
+
 def scan_artifact_comparison_rows(artifact_root: str | Path) -> list[dict]:
     """Scan *artifact_root* sub-directories for run_summary files.
 
@@ -128,7 +262,18 @@ def scan_artifact_comparison_rows(artifact_root: str | Path) -> list[dict]:
             row = extract_summary_row(read_json(xgb_path), label)
             if row:
                 rows.append(row)
-    return rows
+    # GEARS runs use run_manifest.json and may be nested under gears_runs/.
+    for manifest_path in sorted(root.rglob("run_manifest.json")):
+        if not manifest_path.is_file():
+            continue
+        label = manifest_path.parent.relative_to(root).as_posix()
+        if label == ".":
+            label = manifest_path.parent.name
+        row = extract_gears_summary_row(read_json(manifest_path), label)
+        if row:
+            rows.append(row)
+
+    return sorted(rows, key=lambda row: str(row["model"]))
 
 
 def shorten_model_label(label: str) -> str:

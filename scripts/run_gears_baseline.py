@@ -341,7 +341,8 @@ def run_gears_baseline(
 
     output.mkdir(parents=True, exist_ok=True)
     input_hash = file_sha256(input_path)
-    dataset_name = f"scgpt_{input_hash[:10]}_seed{seed}"
+    # Each seed has an isolated output/data directory; keep the logical dataset ID stable.
+    dataset_name = f"scgpt_{input_hash[:10]}"
     data_path = output / "gears_data"
     data_path.mkdir(parents=True, exist_ok=True)
 

@@ -24,6 +24,12 @@ The categorical perturbation-ID embeddings still do not establish zero-shot gene
 to identities absent from training. See
 [`docs/evaluation-protocol-audit.md`](docs/evaluation-protocol-audit.md).
 
+The next model-architecture step is to benchmark a mature implementation before
+building a new perturbation representation. The current candidate and integration
+constraints are documented in
+[`docs/perturbation-modeling-options.md`](docs/perturbation-modeling-options.md);
+GEARS remains an optional candidate until split and target compatibility are verified.
+
 The previously recorded three-seed Transformer aggregate is 0.830 +/- 0.007 reported
 unseen-split Pearson and 0.985 +/- 0.007 reported unseen-split top-100 DEG overlap; the
 same caveat applies.

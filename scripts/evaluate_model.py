@@ -21,7 +21,10 @@ from src.evaluation.error_analysis import (
 )
 from src.evaluation.inference import load_torch_model_for_bundle
 from src.evaluation.metrics import compute_regression_metrics, compute_topk_deg_metrics
-from src.evaluation.protocol import validate_split_matches_training_protocol
+from src.evaluation.protocol import (
+    validate_checkpoint_bundle_identity,
+    validate_split_matches_training_protocol,
+)
 from src.training.trainer import Trainer, TrainerConfig
 from src.utils.config import load_yaml
 from src.utils.logger import get_logger
@@ -90,11 +93,20 @@ def main() -> None:
     run_summary_path = checkpoint_path.parent / "run_summary.json"
     train_protocol = None
     if protocol_path.exists():
-        train_protocol = read_json(protocol_path).get("train_protocol")
+        protocol = read_json(protocol_path)
+        train_protocol = protocol.get("train_protocol")
+        if not validate_checkpoint_bundle_identity(protocol, args.bundle_dir):
+            LOGGER.warning(
+                "Legacy checkpoint lacks bundle hashes; dataset identity is UNVERIFIED."
+            )
     elif run_summary_path.exists():
         run_summary = read_json(run_summary_path)
         train_protocol = run_summary.get("split", {}).get("train_protocol")
     validate_split_matches_training_protocol(train_protocol, args.split_name)
+    if not protocol_path.exists():
+        LOGGER.warning(
+            "No training_protocol.json beside checkpoint; bundle identity is UNVERIFIED."
+        )
     dataset = ProcessedDataset(args.bundle_dir, args.split_name)
     loader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0)
 
@@ -106,6 +118,7 @@ def main() -> None:
         checkpoint_path=args.checkpoint_path,
         model_config_path=args.model_config,
         model_type=args.model_type,
+        bundle_dir=args.bundle_dir,
     )
 
     trainer = Trainer(

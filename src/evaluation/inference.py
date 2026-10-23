@@ -10,6 +10,8 @@ import torch
 
 from src.data.gene_identity import build_unique_gene_name_index
 from src.evaluation.metrics import mean_squared_error, pearson_correlation
+from src.evaluation.protocol import validate_checkpoint_bundle_identity
+from src.data.io import read_json
 from src.models.mlp import MLPBaseline
 from src.models.shared_gene_transformer import SharedGeneIdentityTransformer
 from src.models.transformer import TransformerPerturbationModel
@@ -71,8 +73,19 @@ def load_torch_model_for_bundle(
     checkpoint_path: str | Path,
     model_config_path: str | Path,
     model_type: str = "transformer",
+    bundle_dir: str | Path | None = None,
 ) -> torch.nn.Module:
     """Load a checkpointed torch model for a processed bundle."""
+    protocol_path = Path(checkpoint_path).parent / "training_protocol.json"
+    if protocol_path.is_file():
+        protocol = read_json(protocol_path)
+        if "bundle_artifacts_sha256" in protocol or protocol.get("schema_version", 1) >= 2:
+            if bundle_dir is None:
+                raise ValueError(
+                    "This checkpoint records a bundle identity: bundle_dir is required "
+                    "to verify it before inference."
+                )
+            validate_checkpoint_bundle_identity(protocol, bundle_dir)
     model = build_torch_model(
         model_type=model_type,
         num_genes=int(bundle["control_expression"].shape[1]),

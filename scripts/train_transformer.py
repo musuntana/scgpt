@@ -96,6 +96,18 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     trainer = Trainer(model=model, config=trainer_config, output_dir=output_dir)
     history = trainer.fit(train_loader=train_loader, val_loader=val_loader)
+    with (output_dir / "training_protocol.json").open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "schema_version": 1,
+                "train_protocol": args.split_prefix,
+                "checkpoint_selection_split": f"{args.split_prefix}_val",
+                "test_split": test_split_name,
+                "training_seed": int(train_config_payload["train"]["seed"]),
+            },
+            handle,
+            indent=2,
+        )
     LOGGER.info("Training complete. History length: %s", len(history))
 
     # Reload best checkpoint for test evaluation

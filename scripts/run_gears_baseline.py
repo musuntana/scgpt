@@ -26,6 +26,8 @@ from src.integrations.gears_contract import build_gears_split_contract
 from src.integrations.gears_runtime import (
     attach_train_only_loss_metadata,
     compute_absolute_expression_metrics,
+    compute_control_relative_delta_metrics,
+    validate_gears_gene_order,
     validate_gears_graph_coverage,
 )
 
@@ -359,6 +361,16 @@ def run_gears_baseline(
     )
 
     adata = ad.read_h5ad(input_path)
+    if "gene_name" not in adata.var:
+        raise ValueError("GEARS input H5AD is missing var['gene_name'].")
+    input_gene_ids = adata.var_names.astype(str).tolist()
+    input_gene_symbols = adata.var["gene_name"].astype(str).tolist()
+    # Validate bundle identity before GEARS builds its optional data artifacts.
+    validate_gears_gene_order(
+        bundle_gene_ids=list(bundle_metadata["gene_names"]),
+        input_gene_ids=input_gene_ids,
+        input_gene_symbols=input_gene_symbols,
+    )
     for partition in ("train", "val", "test"):
         observed_conditions = set(
             adata.obs.loc[
@@ -381,6 +393,18 @@ def run_gears_baseline(
         adata=adata,
         skip_calc_de=True,
     )
+    gene_order_report = validate_gears_gene_order(
+        bundle_gene_ids=list(bundle_metadata["gene_names"]),
+        input_gene_ids=input_gene_ids,
+        input_gene_symbols=input_gene_symbols,
+        gears_gene_symbols=[str(name) for name in pert_data.gene_names],
+    )
+    if int(pert_data.ctrl_adata.n_obs) < 1:
+        raise RuntimeError("GEARS has no control cells for prediction baseline.")
+    control_reference_mean = np.asarray(
+        pert_data.ctrl_adata.X.mean(axis=0),
+        dtype=np.float64,
+    ).reshape(-1)
     graph_coverage = validate_gears_graph_coverage(
         bundle_metadata["perturbation_names"],
         {str(name) for name in pert_data.pert_names},
@@ -502,11 +526,41 @@ def run_gears_baseline(
         bundle,
         split_name="unseen_test",
     )
+    delta_metrics = compute_control_relative_delta_metrics(
+        predictions,
+        bundle,
+        control_reference_mean=control_reference_mean,
+        split_name="unseen_test",
+    )
+    control_reference_sha256 = hashlib.sha256(
+        control_reference_mean.astype("<f8", copy=False).tobytes()
+    ).hexdigest()
+    target_alignment = {
+        "verified": bool(gene_order_report["verified"]),
+        "prediction_space": "absolute_expression",
+        "prediction_conversion": (
+            "subtract the mean expression of the exact control cells used by "
+            "GEARS predict()"
+        ),
+        "target_space": "matched_control_relative_delta_expression",
+        "target_source": "bundle.target_delta",
+        "control_reference_cell_count": int(pert_data.ctrl_adata.n_obs),
+        "control_reference_sha256": control_reference_sha256,
+        "gene_order": gene_order_report,
+        "comparable_metric_keys": delta_metrics["comparable_metric_keys"],
+        "non_comparable_metric_keys": delta_metrics["non_comparable_metric_keys"],
+        "comparison_eligible": False,
+        "comparison_blockers": [
+            "review real Norman2019 per-perturbation results",
+            "run at least three seeds",
+            "confirm protocol-matched comparison before reporting model superiority",
+        ],
+    }
 
     elapsed_seconds = time.perf_counter() - started
     result: dict[str, Any] = {
         "schema_version": 1,
-        "status": "TRAINED_DIAGNOSTIC_NOT_DELTA_COMPARABLE",
+        "status": "TRAINED_DIAGNOSTIC_DELTA_ALIGNED_NOT_MULTI_SEED_VALIDATED",
         "input_h5ad_sha256": input_hash,
         "preflight_manifest_sha256": file_sha256(manifest_path),
         "preflight_split_pickle_sha256": file_sha256(split_path),
@@ -535,6 +589,9 @@ def run_gears_baseline(
         "graph_provenance": graph_provenance,
         "training": training_report,
         "metrics": metrics,
+        "delta_metrics": delta_metrics,
+        "target_alignment": target_alignment,
+        "gene_order": gene_order_report,
         "checkpoint_sha256": file_sha256(checkpoint_dir / "model.pt"),
         "config_pickle_sha256": file_sha256(checkpoint_dir / "config.pkl"),
         "runtime_seconds": elapsed_seconds,
@@ -547,13 +604,14 @@ def run_gears_baseline(
         "official_gears_train_called": False,
         "test_loader_used_for_checkpoint_selection": False,
         "de_statistics_computed": False,
-        "target_equivalence_verified": False,
+        "target_equivalence_verified": bool(target_alignment["verified"]),
         "directly_comparable_to_repository_delta_metrics": False,
         "comparison_eligible": False,
         "next_gates": [
-            "review GO graph and per-perturbation failure cases",
-            "align GEARS absolute-expression predictions with matched-control delta targets",
+            "review GO graph and target-alignment evidence on real Norman2019 data",
+            "review per-perturbation failure cases",
             "run at least three seeds before interpreting stability",
+            "confirm protocol-matched comparison before reporting model superiority",
         ],
     }
     for filename in ("results.json", "run_manifest.json"):
@@ -561,7 +619,7 @@ def run_gears_baseline(
             json.dump(result, handle, indent=2, sort_keys=True, ensure_ascii=False)
     print(
         f"GEARS training complete: {len(test_names)} held-out perturbations; "
-        f"status={result['status']}; direct delta comparison remains blocked."
+        f"status={result['status']}; multi-seed comparison remains blocked."
     )
     return result
 

@@ -15,6 +15,14 @@ from src.utils.logger import get_logger
 
 LOGGER = get_logger(__name__)
 
+# Only explicit, direction-aware validation objectives may select checkpoints.
+CHECKPOINT_METRIC_DIRECTION = {
+    "pearson_per_perturbation": "max",
+    "pearson_per_gene": "max",
+    "overall_mse": "min",
+    "mse_per_perturbation": "min",
+}
+
 
 def _resolve_device(requested_device: str) -> torch.device:
     if requested_device != "auto":
@@ -81,8 +89,26 @@ class Trainer:
         )
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader) -> list[dict[str, float]]:
+        direction = CHECKPOINT_METRIC_DIRECTION.get(self.config.checkpoint_metric)
+        if direction is None:
+            choices = ", ".join(sorted(CHECKPOINT_METRIC_DIRECTION))
+            raise ValueError(
+                f"Unsupported checkpoint_metric={self.config.checkpoint_metric!r}; "
+                f"select one of: {choices}."
+            )
+        if self.config.epochs < 1:
+            raise ValueError("epochs must be at least 1 to select a checkpoint.")
+        if self.config.early_stopping_patience < 1:
+            raise ValueError("early_stopping_patience must be at least 1.")
+        if len(train_loader) == 0 or len(train_loader.dataset) == 0:  # type: ignore[arg-type]
+            raise ValueError("Training split is empty; cannot fit a model.")
+        if len(val_loader) == 0 or len(val_loader.dataset) == 0:  # type: ignore[arg-type]
+            raise ValueError(
+                "Validation split is empty; cannot select a reliable checkpoint."
+            )
+
         history: list[dict[str, float]] = []
-        best_metric = float("-inf")
+        best_metric = float("-inf") if direction == "max" else float("inf")
         patience = 0
 
         for epoch in range(1, self.config.epochs + 1):
@@ -91,7 +117,12 @@ class Trainer:
             epoch_record = {"epoch": float(epoch), "train_loss": train_loss, **val_metrics}
             history.append(epoch_record)
 
-            current_metric = float(val_metrics.get(self.config.checkpoint_metric, 0.0))
+            current_metric = float(val_metrics[self.config.checkpoint_metric])
+            if not np.isfinite(current_metric):
+                raise ValueError(
+                    f"Validation checkpoint metric {self.config.checkpoint_metric!r} "
+                    "is non-finite; refusing checkpoint selection."
+                )
             LOGGER.info(
                 "Epoch %s | train_loss=%.4f | %s=%.4f",
                 epoch,
@@ -99,7 +130,12 @@ class Trainer:
                 self.config.checkpoint_metric,
                 current_metric,
             )
-            if current_metric > best_metric:
+            improved = (
+                current_metric > best_metric
+                if direction == "max"
+                else current_metric < best_metric
+            )
+            if improved:
                 best_metric = current_metric
                 patience = 0
                 self.save_checkpoint("best_model.pt")
@@ -113,8 +149,8 @@ class Trainer:
         return history
 
     def _train_one_epoch(self, loader: DataLoader, epoch: int = 0) -> float:
-        if len(loader.dataset) == 0:  # type: ignore[arg-type]
-            return 0.0
+        if len(loader) == 0 or len(loader.dataset) == 0:  # type: ignore[arg-type]
+            raise ValueError("Training split is empty; cannot train an epoch.")
 
         self.model.train()
         total_loss = 0.0
@@ -128,15 +164,26 @@ class Trainer:
 
             self.optimizer.zero_grad()
             predictions = self._forward_batch(batch)
+            if predictions.shape != target_delta.shape:
+                raise ValueError(
+                    "Training prediction and target shapes differ: "
+                    f"{tuple(predictions.shape)} vs {tuple(target_delta.shape)}."
+                )
             loss, _ = mse_l1_loss(
                 predictions=predictions,
                 targets=target_delta,
                 model=self.model,
                 l1_lambda=self.config.l1_lambda,
             )
+            if not bool(torch.isfinite(loss).item()):
+                raise ValueError(
+                    f"Non-finite training loss at epoch {epoch}, batch {batch_idx + 1}."
+                )
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(), self.config.grad_clip_norm
+                self.model.parameters(),
+                self.config.grad_clip_norm,
+                error_if_nonfinite=True,
             )
             self.optimizer.step()
 
@@ -172,26 +219,28 @@ class Trainer:
 
     @torch.no_grad()
     def evaluate(self, loader: DataLoader) -> dict[str, float]:
-        if len(loader.dataset) == 0:  # type: ignore[arg-type]
-            return {
-                "overall_mse": 0.0,
-                "mse_per_perturbation": 0.0,
-                "pearson_per_perturbation": 0.0,
-                "pearson_per_gene": 0.0,
-            }
+        if len(loader) == 0 or len(loader.dataset) == 0:  # type: ignore[arg-type]
+            raise ValueError(
+                "Evaluation split is empty; no metrics can be reported."
+            )
         predictions, targets, perturbations = self.collect_outputs(loader)
 
-        return compute_regression_metrics(
+        metrics = compute_regression_metrics(
             predictions=predictions,
             targets=targets,
             perturbation_index=perturbations,
         )
+        if not all(np.isfinite(value) for value in metrics.values()):
+            raise ValueError("Non-finite evaluation metrics; refusing to report scores.")
+        return metrics
 
     @torch.no_grad()
     def collect_outputs(
         self, loader: DataLoader
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Collect raw predictions, targets, and perturbation indices from a loader."""
+        if len(loader) == 0 or len(loader.dataset) == 0:  # type: ignore[arg-type]
+            raise ValueError("Evaluation split is empty; no outputs can be collected.")
         self.model.eval()
         predictions: list[np.ndarray] = []
         targets: list[np.ndarray] = []
@@ -200,6 +249,15 @@ class Trainer:
             perturbation_index = batch["perturbation_index"].to(self.device)
             target_delta = batch["target_delta"].to(self.device)
             batch_predictions = self._forward_batch(batch)
+            if batch_predictions.shape != target_delta.shape:
+                raise ValueError(
+                    "Evaluation prediction and target shapes differ: "
+                    f"{tuple(batch_predictions.shape)} vs {tuple(target_delta.shape)}."
+                )
+            if not bool(torch.isfinite(batch_predictions).all().item()):
+                raise ValueError("Non-finite evaluation predictions.")
+            if not bool(torch.isfinite(target_delta).all().item()):
+                raise ValueError("Non-finite evaluation targets.")
             predictions.append(batch_predictions.detach().cpu().numpy())
             targets.append(target_delta.detach().cpu().numpy())
             perturbations.append(perturbation_index.detach().cpu().numpy())

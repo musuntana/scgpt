@@ -104,3 +104,18 @@ the new split-aware selector or the CLI.
 4. Record sample counts, group counts, split protocol, and seed with each run.
 5. Re-run the real Norman2019 pipeline with the corrected protocol and preserve
    the old artifacts as historical results rather than silently overwriting them.
+
+
+## Checkpoint-selection safeguards
+
+The training loop selects validation checkpoints using the metric's declared
+direction: both MSE metrics are minimized, while per-perturbation and per-gene
+Pearson correlations are maximized. Unknown checkpoint metrics and invalid epoch
+or patience settings are rejected before training. Empty training and validation
+loaders fail closed rather than yielding a synthetic zero score or a spurious
+best checkpoint; empty evaluation splits cannot report metrics. Non-finite
+training loss, gradients, evaluation predictions, targets, or metrics stop the
+run rather than writing an apparently successful result.
+
+These are engineering correctness checks, **not** evidence that unseen
+perturbation generalization has been validated on real Norman2019 data.

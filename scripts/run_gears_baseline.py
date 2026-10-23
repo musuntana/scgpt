@@ -529,23 +529,33 @@ def run_gears_baseline(
     delta_metrics = compute_control_relative_delta_metrics(
         predictions,
         bundle,
-        control_reference_mean=control_reference_mean,
         split_name="unseen_test",
     )
     control_reference_sha256 = hashlib.sha256(
         control_reference_mean.astype("<f8", copy=False).tobytes()
     ).hexdigest()
+    matched_control_reference = np.asarray(
+        bundle["control_expression"], dtype=np.float64
+    )[test_indices]
+    matched_control_reference_sha256 = hashlib.sha256(
+        matched_control_reference.astype("<f8", copy=False).tobytes()
+    ).hexdigest()
     target_alignment = {
-        "verified": bool(gene_order_report["verified"]),
+        "status": "IMPLEMENTED_NOT_REAL_DATA_VALIDATED",
+        "gene_order_verified": bool(gene_order_report["verified"]),
+        "matched_control_delta_conversion_implemented": True,
+        "real_data_target_equivalence_verified": False,
         "prediction_space": "absolute_expression",
         "prediction_conversion": (
-            "subtract the mean expression of the exact control cells used by "
-            "GEARS predict()"
+            "subtract the mean bundle matched-control expression for each held-out "
+            "perturbation group"
         ),
         "target_space": "matched_control_relative_delta_expression",
         "target_source": "bundle.target_delta",
-        "control_reference_cell_count": int(pert_data.ctrl_adata.n_obs),
-        "control_reference_sha256": control_reference_sha256,
+        "gears_prediction_control_cell_count": int(pert_data.ctrl_adata.n_obs),
+        "gears_prediction_control_reference_sha256": control_reference_sha256,
+        "matched_control_sample_count": int(len(test_indices)),
+        "matched_control_reference_sha256": matched_control_reference_sha256,
         "gene_order": gene_order_report,
         "comparable_metric_keys": delta_metrics["comparable_metric_keys"],
         "non_comparable_metric_keys": delta_metrics["non_comparable_metric_keys"],
@@ -604,7 +614,7 @@ def run_gears_baseline(
         "official_gears_train_called": False,
         "test_loader_used_for_checkpoint_selection": False,
         "de_statistics_computed": False,
-        "target_equivalence_verified": bool(target_alignment["verified"]),
+        "target_equivalence_verified": False,
         "directly_comparable_to_repository_delta_metrics": False,
         "comparison_eligible": False,
         "next_gates": [

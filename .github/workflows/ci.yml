@@ -1,10 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.ipynb'
+      - 'docs/assets/**'
+  workflow_dispatch:
 
 jobs:
   test:

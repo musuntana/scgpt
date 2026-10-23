@@ -128,7 +128,7 @@ class Trainer:
             target_delta = batch["target_delta"].to(self.device)
 
             self.optimizer.zero_grad()
-            predictions = self.model(control_expression, perturbation_index)
+            predictions = self._forward_batch(batch)
             loss, _ = mse_l1_loss(
                 predictions=predictions,
                 targets=target_delta,
@@ -156,6 +156,20 @@ class Trainer:
                 )
 
         return total_loss / max(total_examples, 1)
+
+    def _forward_batch(self, batch: dict[str, Any]) -> torch.Tensor:
+        """Route batches to categorical-ID or shared-gene-identity models."""
+        control_expression = batch["control_expression"].to(self.device)
+        if getattr(self.model, "requires_perturbation_gene_index", False):
+            if "perturbation_gene_index" not in batch:
+                raise ValueError(
+                    "This model requires perturbation_gene_index in each dataset batch."
+                )
+            perturbation_gene_index = batch["perturbation_gene_index"].to(self.device)
+            return self.model(control_expression, perturbation_gene_index)
+
+        perturbation_index = batch["perturbation_index"].to(self.device)
+        return self.model(control_expression, perturbation_index)
 
     @torch.no_grad()
     def evaluate(self, loader: DataLoader) -> dict[str, float]:
@@ -187,7 +201,7 @@ class Trainer:
             control_expression = batch["control_expression"].to(self.device)
             perturbation_index = batch["perturbation_index"].to(self.device)
             target_delta = batch["target_delta"].to(self.device)
-            batch_predictions = self.model(control_expression, perturbation_index)
+            batch_predictions = self._forward_batch(batch)
             predictions.append(batch_predictions.detach().cpu().numpy())
             targets.append(target_delta.detach().cpu().numpy())
             perturbations.append(perturbation_index.detach().cpu().numpy())

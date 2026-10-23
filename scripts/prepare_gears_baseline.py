@@ -104,6 +104,7 @@ def _rebuild_source_and_export(
         bundle,
         perturbation_col=schema.perturbation_col,
         control_label=schema.control_label,
+        context_col=schema.context_cols[0] if len(schema.context_cols) == 1 else None,
     )
 
     preprocess_config = dict(data_config["preprocess"])

@@ -355,6 +355,35 @@ def run_gears_baseline(
         uncertainty=False,
         direction_lambda=0.1,
     )
+    # Official GEARS builds the co-expression graph through
+    # get_coexpression_network_from_train using set2conditions["train"].
+    # Capture the exact generated artifact and the split identity in the run record.
+    coexpression_graphs = sorted(
+        (data_path / dataset_name).glob("*_co_expression_network.csv")
+    )
+    if len(coexpression_graphs) != 1:
+        raise RuntimeError(
+            "Expected exactly one official GEARS co-expression graph artifact after "
+            f"model initialization; found {len(coexpression_graphs)}."
+        )
+    coexpression_graph_path = coexpression_graphs[0]
+    training_conditions_sha256 = hashlib.sha256(
+        json.dumps(
+            sorted(split_json["train"]),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    graph_provenance = {
+        "coexpression_graph_method": "official_gears_get_coexpression_network_from_train",
+        "coexpression_graph_scope": "custom training conditions only (including shared controls)",
+        "coexpression_graph_train_only": True,
+        "training_conditions_count_including_control": len(split_json["train"]),
+        "training_conditions_sha256": training_conditions_sha256,
+        "coexpression_graph_path": str(coexpression_graph_path.relative_to(output)),
+        "coexpression_graph_sha256": file_sha256(coexpression_graph_path),
+        "go_graph_source": "official GEARS GO prior graph; no expression-derived statistics",
+    }
     training_report = train_with_all_gene_validation(
         model,
         pert_data.dataloader["train_loader"],
@@ -411,6 +440,7 @@ def run_gears_baseline(
         },
         "training_only_metadata": metadata_report,
         "graph_coverage": graph_coverage,
+        "graph_provenance": graph_provenance,
         "training": training_report,
         "metrics": metrics,
         "checkpoint_sha256": file_sha256(checkpoint_dir / "model.pt"),

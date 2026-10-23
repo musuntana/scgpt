@@ -1,6 +1,6 @@
 # GEARS baseline: source-data export and leakage gates
 
-**Status: data-export tooling only. No GEARS model has been installed, trained, or evaluated by this feature.**
+**Status: optional GEARS runtime implemented; real-data training and evaluation are not yet validated.**
 
 The official [GEARS](https://github.com/snap-stanford/GEARS) `PertData.prepare_split(split="custom", split_dict_path=...)` reads a Python pickle whose values are lists of **condition names**. This repository stores **perturbed-cell indices**. The preflight converter only accepts the group-disjoint `unseen` protocol; a cell-level `seen` split cannot be expressed as GEARS condition lists.
 
@@ -94,6 +94,9 @@ The runner:
 - Checks that every perturbation target is present in the loaded GEARS perturbation/GO graph and that the official custom split retains the exact train/val/test condition lists. It stops before training if a condition disappears.
 - Reuses GEARS' official model, graph construction, data loaders and loss function, but uses a small custom training loop and **all-gene validation MSE** for checkpoint selection. The test loader is not used for checkpoint selection.
 - The official co-expression graph builder receives the exact custom training condition list (including shared controls), so held-out perturbation cells are excluded. The runner records the graph CSV SHA-256 and canonical training-condition digest in the run manifest. Sparse expression validation inspects stored values without densifying the full matrix.
-- Evaluates the held-out conditions in **absolute-expression space** and saves `results.json`, `run_manifest.json`, `checkpoint/model.pt`, and the official model config.
+- Evaluates held-out conditions in **absolute-expression space** and saves `results.json`, `run_manifest.json`, `checkpoint/model.pt`, and the official model config.
+- Also emits `delta_metrics`: subtracts the mean expression of the exact control cells used by GEARS prediction from each predicted absolute-expression vector, then compares it with the bundle's matched-control `target_delta`, averaged per held-out perturbation.
+- Verifies the processed bundle gene-ID order, the input AnnData gene-symbol order, and the symbol order retained by GEARS. The run manifest records SHA-256 digests for the ordered gene identities and the GEARS control reference.
+- Only `mse_per_perturbation` and `pearson_per_perturbation` in `delta_metrics` are marked compatible with the repository's corresponding aggregated delta metrics. `overall_mse` and `pearson_per_gene` are not claimed to be directly comparable because GEARS returns one aggregated prediction per perturbation.
 
-This runtime is still diagnostic. Its absolute-expression metrics are **not directly comparable** to this repository's batch/context-aware control-relative delta metrics. A separate target-alignment study and at least three seeds are required before making a model-performance claim. For a multi-seed report, use separate output directories and seeds; do not reuse the same run directory.
+This runtime remains diagnostic. The delta conversion and gene-order checks are implemented and unit-tested, but **no real Norman2019 GEARS run has yet validated the end-to-end result**. Review real per-perturbation outputs and run at least three seeds before making a model-performance claim. For multi-seed reports, use separate output directories and seeds; do not reuse a run directory.

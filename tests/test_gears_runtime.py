@@ -10,6 +10,8 @@ from src.integrations.gears_export import build_gears_input_adata
 from src.integrations.gears_runtime import (
     attach_train_only_loss_metadata,
     compute_absolute_expression_metrics,
+    compute_control_relative_delta_metrics,
+    validate_gears_gene_order,
     validate_gears_graph_coverage,
 )
 
@@ -201,4 +203,109 @@ def test_absolute_expression_metrics_fail_if_prediction_is_missing():
         compute_absolute_expression_metrics(
             {"C": np.ones(2, dtype=np.float32)},
             _bundle(),
+        )
+
+
+def test_gene_order_validation_records_exact_order_hashes() -> None:
+    report = validate_gears_gene_order(
+        bundle_gene_ids=["gene-1", "gene-2"],
+        input_gene_ids=["gene-1", "gene-2"],
+        input_gene_symbols=["G1", "G2"],
+        gears_gene_symbols=["G1", "G2"],
+    )
+
+    assert report["verified"] is True
+    assert report["bundle_input_gene_order_verified"] is True
+    assert report["gears_symbol_order_verified"] is True
+    assert report["gene_count"] == 2
+    assert len(report["bundle_gene_ids_sha256"]) == 64
+    assert report["input_gene_symbols_sha256"] == report["gears_gene_symbols_sha256"]
+
+
+def test_gene_order_validation_rejects_bundle_order_mismatch() -> None:
+    with pytest.raises(ValueError, match="gene ID order"):
+        validate_gears_gene_order(
+            bundle_gene_ids=["gene-1", "gene-2"],
+            input_gene_ids=["gene-2", "gene-1"],
+            input_gene_symbols=["G2", "G1"],
+        )
+
+
+def test_gene_order_validation_rejects_duplicate_symbols() -> None:
+    with pytest.raises(ValueError, match="unique"):
+        validate_gears_gene_order(
+            bundle_gene_ids=["gene-1", "gene-2"],
+            input_gene_ids=["gene-1", "gene-2"],
+            input_gene_symbols=["DUP", "DUP"],
+        )
+
+
+def test_gene_order_validation_rejects_gears_symbol_reordering() -> None:
+    with pytest.raises(ValueError, match="symbol order"):
+        validate_gears_gene_order(
+            bundle_gene_ids=["gene-1", "gene-2"],
+            input_gene_ids=["gene-1", "gene-2"],
+            input_gene_symbols=["G1", "G2"],
+            gears_gene_symbols=["G2", "G1"],
+        )
+
+
+def test_control_relative_delta_metrics_align_prediction_and_target_spaces() -> None:
+    bundle = _bundle()
+    bundle["target_delta"][6:8] = np.array([[0.5, -0.5], [0.5, -0.5]])
+
+    result = compute_control_relative_delta_metrics(
+        {"D": np.array([1.5, 0.5], dtype=np.float32)},
+        bundle,
+        control_reference_mean=np.array([1.0, 1.0], dtype=np.float32),
+    )
+
+    assert result["metric_space"] == "control_relative_delta_expression"
+    assert result["directly_comparable_to_repository_delta_metrics"] is True
+    assert result["mse_per_perturbation"] == pytest.approx(0.0)
+    assert result["pearson_per_perturbation"] == pytest.approx(1.0)
+    assert result["comparable_metric_keys"] == [
+        "mse_per_perturbation",
+        "pearson_per_perturbation",
+    ]
+    assert result["comparison_eligible"] is False
+
+
+@pytest.mark.parametrize(
+    ("baseline", "message"),
+    [
+        (np.array([1.0]), "one-dimensional vector"),
+        (np.array([1.0, np.nan]), "non-finite"),
+    ],
+)
+def test_control_relative_delta_metrics_reject_invalid_control_reference(
+    baseline: np.ndarray,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        compute_control_relative_delta_metrics(
+            {"D": np.ones(2, dtype=np.float32)},
+            _bundle(),
+            control_reference_mean=baseline,
+        )
+
+
+def test_control_relative_delta_metrics_rejects_non_vector_prediction() -> None:
+    with pytest.raises(ValueError, match="one-dimensional vector"):
+        compute_control_relative_delta_metrics(
+            {"D": np.ones((1, 2), dtype=np.float32)},
+            _bundle(),
+            control_reference_mean=np.ones(2, dtype=np.float32),
+        )
+
+
+def test_control_relative_delta_metrics_rejects_non_finite_target_delta() -> None:
+    bundle = _bundle()
+    bundle["target_delta"][6, 0] = np.inf
+
+    with pytest.raises(ValueError, match="target_delta contains non-finite"):
+        compute_control_relative_delta_metrics(
+            {"D": np.ones(2, dtype=np.float32)},
+            bundle,
+            control_reference_mean=np.ones(2, dtype=np.float32),
         )

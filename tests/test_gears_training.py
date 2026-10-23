@@ -102,7 +102,7 @@ def test_custom_trainer_restores_lowest_validation_checkpoint() -> None:
         atol=1e-5,
     )
     assert torch.equal(
-        gears_model.model.weight.detach(),
+        gears_model.model.linear.weight.detach(),
         gears_model.best_model.linear.weight.detach(),
     )
     assert report["official_gears_train_called"] is False

@@ -50,14 +50,14 @@ def _create_snapshot_backing_files(root: Path) -> None:
         """
 {
   "dataset": {"name": "scperturb_norman2019", "cell_context": "K562"},
+  "split": {"train_protocol": "seen"},
   "artifacts": {"bundle": {"num_samples": 10500, "num_genes": 512, "num_perturbations": 105}},
   "test_metrics": {
-    "seen_test": {"pearson_per_perturbation": 0.6044, "mse_per_perturbation": 0.0071},
-    "unseen_test": {
-      "pearson_per_perturbation": 0.8243,
-      "mse_per_perturbation": 0.0011,
-      "topk_deg_overlap_20": 0.9296,
-      "topk_deg_overlap_100": 0.9755
+    "seen_test": {
+      "pearson_per_perturbation": 0.6044,
+      "mse_per_perturbation": 0.0071,
+      "topk_deg_overlap_20": 0.9200,
+      "topk_deg_overlap_100": 0.9440
     }
   }
 }
@@ -71,6 +71,17 @@ def _create_snapshot_backing_files(root: Path) -> None:
   {
     "dataset_name": "scperturb_norman2019",
     "train_protocol": "seen",
+    "model_type": "transformer",
+    "num_runs": 3,
+    "seeds": [7, 21, 42],
+    "seen_pearson_mean": 0.6120,
+    "seen_pearson_std": 0.0060,
+    "seen_top100_deg_mean": 0.9100,
+    "seen_top100_deg_std": 0.0100
+  },
+  {
+    "dataset_name": "scperturb_norman2019",
+    "train_protocol": "unseen",
     "model_type": "transformer",
     "num_runs": 3,
     "seeds": [7, 21, 42],
@@ -98,7 +109,7 @@ def _create_snapshot_backing_files(root: Path) -> None:
     )
     _write_json(
         root,
-        "artifacts/transformer_seen_norman2019_demo/unseen_test_error_summary.json",
+        "artifacts/transformer_unseen_norman2019_demo/unseen_test_error_summary.json",
         """
 {
   "split_name": "unseen_test",
@@ -115,9 +126,9 @@ def _create_snapshot_backing_files(root: Path) -> None:
         "artifacts/mlp_seen_norman2019_demo/run_summary.json",
         """
 {
+  "split": {"train_protocol": "seen"},
   "test_metrics": {
-    "seen_test": {"pearson_per_perturbation": 0.6333, "mse_per_perturbation": 0.0066},
-    "unseen_test": {"pearson_per_perturbation": 0.8374, "mse_per_perturbation": 0.00085}
+    "seen_test": {"pearson_per_perturbation": 0.6333, "mse_per_perturbation": 0.0066}
   }
 }
 """.strip(),
@@ -127,9 +138,9 @@ def _create_snapshot_backing_files(root: Path) -> None:
         "artifacts/xgboost_seen_norman2019_demo/xgboost_run_summary.json",
         """
 {
+  "train_split_prefix": "seen",
   "metrics": {
-    "seen_test": {"pearson_per_perturbation": 0.6178, "mse_per_perturbation": 0.0066},
-    "unseen_test": {"pearson_per_perturbation": 0.8405, "mse_per_perturbation": 0.00084}
+    "seen_test": {"pearson_per_perturbation": 0.6405, "mse_per_perturbation": 0.0066}
   }
 }
 """.strip(),
@@ -147,7 +158,9 @@ def test_build_interview_script_contains_expected_sections(tmp_path: Path) -> No
     assert len(script["tracks"]["ai4bio"]["resume_bullets"]) == 3
     assert len(script["tracks"]["ml-engineering"]["thirty_second_pitch"]) == 4
     assert "XGBoost" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][4]
-    assert "0.8304 +/- 0.0067" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][4]
+    assert "0.6405" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][4]
+    assert "0.6120 +/- 0.0060" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][4]
+    assert "diagnostic" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][4]
     assert "MAP2K6" in script["tracks"]["ai4bio"]["two_minute_walkthrough"][5]
     assert "FOXO4" in script["live_demo_script"][7]
 
@@ -173,9 +186,9 @@ def test_format_interview_script_mentions_key_metrics_and_sections(tmp_path: Pat
     assert "30-second pitch:" in report
     assert "2-minute walkthrough:" in report
     assert "Live demo script:" in report
-    assert "0.8405" in report
-    assert "0.9755" in report
-    assert "0.8304 +/- 0.0067" in report
+    assert "0.6405" in report
+    assert "0.6120 +/- 0.0060" in report
+    assert "not yet support a zero-shot performance claim" in report
     assert "MAP2K6" in report
     assert "FOXO4" in report
 

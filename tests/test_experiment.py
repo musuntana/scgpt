@@ -107,6 +107,7 @@ def test_build_run_summary_collects_required_fields(tmp_path):
     assert provenance["outputs"]["checkpoint"]["sha256"] == hashlib.sha256(
         b"checkpoint"
     ).hexdigest()
+    assert provenance["outputs"]["training_protocol"]["status"] == "not_found"
     assert provenance["inputs"]["raw_dataset"]["status"] in {"available", "not_found"}
     split_audit = summary["split"]["audit"]
     assert split_audit["sample_count"] == 1

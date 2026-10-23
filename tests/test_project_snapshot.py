@@ -54,6 +54,8 @@ def _transformer_summary(
             "seen_test": {
                 "pearson_per_perturbation": 0.60,
                 "mse_per_perturbation": 0.0071,
+                "topk_deg_overlap_20": 0.90,
+                "topk_deg_overlap_100": 0.94,
             }
         }
         if train_protocol == "seen"

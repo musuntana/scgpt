@@ -197,6 +197,27 @@ def test_custom_trainer_rejects_empty_validation_loader() -> None:
         )
 
 
+def test_custom_trainer_rejects_non_finite_validation_values() -> None:
+    with pytest.raises(RuntimeError, match="Non-finite GEARS validation"):
+        _train(
+            gears_model=_gears_model(),
+            train_loader=[_batch(1.0)],
+            val_loader=[_batch(float("nan"))],
+        )
+
+
+def test_custom_trainer_rejects_validation_shape_mismatch() -> None:
+    validation_batch = _batch(0.0)
+    validation_batch.y = torch.zeros((1, 2), dtype=torch.float32)
+
+    with pytest.raises(RuntimeError, match="shape mismatch"):
+        _train(
+            gears_model=_gears_model(),
+            train_loader=[_batch(1.0)],
+            val_loader=[validation_batch],
+        )
+
+
 def test_custom_trainer_stops_on_non_finite_loss() -> None:
     def non_finite_loss(
         prediction: torch.Tensor,

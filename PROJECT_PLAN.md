@@ -84,15 +84,16 @@ MVP 主数据集固定为：
 ```text
 raw / benchmark AnnData
   -> metadata sanity check
-  -> filter low quality cells / genes
-  -> normalize_total
-  -> log1p
-  -> highly_variable_genes
-  -> keep sparse matrix through preprocessing
+  -> cell QC and deterministic per-perturbation cap
+  -> plan seen / unseen sample indices
+  -> fit min-cells gene filter on shared training intersection + controls
+  -> normalize_total on retained genes
+  -> optional log1p
+  -> fit HVGs on the same training/reference subset
+  -> apply one feature mask to all samples
   -> build control mean by batch / cell type
   -> create delta expression targets
-  -> seen / unseen split
-  -> export processed tensors and metadata
+  -> export tensors, split indices, and preprocessing provenance
 ```
 
 核心产物：

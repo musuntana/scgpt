@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.data.pairing import load_processed_bundle
 from src.data.torch_dataset import ProcessedDataset
+from src.evaluation.protocol import matching_test_split
 from src.models.transformer import TransformerPerturbationModel
 from src.training.trainer import Trainer, TrainerConfig
 from src.utils.config import ensure_keys, load_yaml
@@ -101,23 +102,21 @@ def main() -> None:
         model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
         model.to(trainer.device)
 
-    # Evaluate on both seen and unseen test splits
+    # Evaluate only on the test split matching the training protocol.
     bundle = load_processed_bundle(args.bundle_dir)
-    for split_name in ("seen_test", "unseen_test"):
-        if split_name not in bundle["splits"]:
-            continue
-        eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
-        eval_loader = DataLoader(
-            eval_dataset,
-            batch_size=trainer_config.batch_size,
-            shuffle=False,
-            num_workers=trainer_config.num_workers,
-        )
-        metrics = trainer.evaluate(eval_loader)
-        metrics_path = output_dir / f"{split_name}_metrics.json"
-        with metrics_path.open("w", encoding="utf-8") as handle:
-            json.dump(metrics, handle, indent=2)
-        LOGGER.info("Saved %s metrics to %s: %s", split_name, metrics_path, metrics)
+    split_name = matching_test_split(args.split_prefix, bundle["splits"])
+    eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
+    eval_loader = DataLoader(
+        eval_dataset,
+        batch_size=trainer_config.batch_size,
+        shuffle=False,
+        num_workers=trainer_config.num_workers,
+    )
+    metrics = trainer.evaluate(eval_loader)
+    metrics_path = output_dir / f"{split_name}_metrics.json"
+    with metrics_path.open("w", encoding="utf-8") as handle:
+        json.dump(metrics, handle, indent=2)
+    LOGGER.info("Saved %s metrics to %s: %s", split_name, metrics_path, metrics)
 
 
 if __name__ == "__main__":

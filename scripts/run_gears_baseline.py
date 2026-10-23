@@ -127,11 +127,34 @@ def evaluate_all_gene_mse(loader: Any, model: Any, torch: Any, device: str) -> f
             batch.to(device)
             prediction = model(batch)
             target = batch.y
-            squared_error += float(torch.sum((prediction - target) ** 2).item())
+            if prediction.shape != target.shape:
+                raise RuntimeError(
+                    "GEARS validation prediction/target shape mismatch: "
+                    f"{tuple(prediction.shape)} != {tuple(target.shape)}."
+                )
+            if not bool(torch.isfinite(prediction).all().item()) or not bool(
+                torch.isfinite(target).all().item()
+            ):
+                raise RuntimeError(
+                    "Non-finite GEARS validation prediction or target; "
+                    "refusing to select a checkpoint."
+                )
+            batch_squared_error = float(torch.sum((prediction - target) ** 2).item())
+            if not math.isfinite(batch_squared_error):
+                raise RuntimeError(
+                    "Non-finite GEARS validation squared error; "
+                    "refusing to select a checkpoint."
+                )
+            squared_error += batch_squared_error
             element_count += int(target.numel())
     if element_count == 0:
         raise RuntimeError("Validation loader has no expression targets.")
-    return squared_error / element_count
+    validation_mse = squared_error / element_count
+    if not math.isfinite(validation_mse):
+        raise RuntimeError(
+            "Non-finite GEARS validation MSE; refusing to select a checkpoint."
+        )
+    return validation_mse
 
 
 def train_with_all_gene_validation(

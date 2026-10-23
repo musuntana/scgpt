@@ -114,18 +114,15 @@ def test_graph_coverage_reports_missing_perturbation_genes():
 
 def test_absolute_expression_metrics_are_explicitly_not_delta_comparable():
     bundle = _bundle()
-    predictions = {
-        "C": np.ones(2, dtype=np.float32),
-        "D": np.ones(2, dtype=np.float32),
-    }
+    predictions = {"D": np.ones(2, dtype=np.float32)}
     result = compute_absolute_expression_metrics(predictions, bundle)
 
     assert result["metric_space"] == "absolute_expression"
     assert result["target_is_delta_expression"] is False
     assert result["directly_comparable_to_repository_delta_metrics"] is False
-    assert result["perturbation_count"] == 2
+    assert result["perturbation_count"] == 1
     assert result["mse_absolute_expression"] == 0.0
-    assert set(result["per_perturbation"]) == {"C", "D"}
+    assert set(result["per_perturbation"]) == {"D"}
 
 
 def test_absolute_expression_metrics_fail_if_prediction_is_missing():

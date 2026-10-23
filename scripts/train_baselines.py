@@ -110,12 +110,12 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     metrics_by_split: dict[str, dict[str, float]] = {}
     split_name = matching_test_split(args.split_prefix, splits)
     split_indices = splits[split_name]
-        predictions = model.predict(features[split_indices])
-        metrics = _evaluate_numpy_baseline(
-            predictions=predictions,
-            targets=targets[split_indices],
-            perturbation_index=bundle["perturbation_index"][split_indices],
-        )
+    predictions = model.predict(features[split_indices])
+    metrics = _evaluate_numpy_baseline(
+        predictions=predictions,
+        targets=targets[split_indices],
+        perturbation_index=bundle["perturbation_index"][split_indices],
+    )
     metrics_by_split[split_name] = metrics
     metrics_path = output_dir / f"xgboost_{split_name}_metrics.json"
     with metrics_path.open("w", encoding="utf-8") as handle:

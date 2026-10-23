@@ -29,6 +29,9 @@ building a new perturbation representation. The current candidate and integratio
 constraints are documented in
 [`docs/perturbation-modeling-options.md`](docs/perturbation-modeling-options.md);
 GEARS remains an optional candidate until split and target compatibility are verified.
+The first code-level gate is now available: [`docs/gears-preflight.md`](docs/gears-preflight.md)
+describes the group-disjoint GEARS custom split exporter, data identity checks, and
+unverified conditions before any real baseline run. It requires no new dependencies.
 
 The previously recorded three-seed Transformer aggregate is 0.830 +/- 0.007 reported
 unseen-split Pearson and 0.985 +/- 0.007 reported unseen-split top-100 DEG overlap; the

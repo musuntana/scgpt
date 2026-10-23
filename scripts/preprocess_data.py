@@ -113,6 +113,7 @@ def main() -> None:
         control_label=schema.control_label,
         random_seed=random_seed,
         select_hvg=False,
+        filter_genes_before_split=False,
     )
     prepared = select_hvgs_from_training_partitions(
         adata=prepared,

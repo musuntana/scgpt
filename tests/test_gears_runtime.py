@@ -312,7 +312,6 @@ def test_control_relative_delta_metrics_rejects_non_vector_prediction() -> None:
         compute_control_relative_delta_metrics(
             {"D": np.ones((1, 2), dtype=np.float32)},
             _bundle(),
-            control_reference_mean=np.ones(2, dtype=np.float32),
         )
 
 

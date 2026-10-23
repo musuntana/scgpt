@@ -6,6 +6,8 @@ All notable changes to PerturbScope-GPT are documented here.
 
 ## [Unreleased]
 
+- Training scripts now evaluate only the test split matching the selected training protocol; the generic evaluator rejects checkpoint/split protocol mismatches.
+- Run summaries and model-comparison assets no longer mix seen/unseen test metrics from a single checkpoint; comparison figures use one matching protocol.
 - Moved CLI gene filtering and HVG selection to the intersection of seen/unseen training perturbation samples plus the shared control reference; persisted feature-selection provenance in processed bundles and run summaries.
 - Added regression tests proving that perturbation samples held out by either split protocol do not participate in feature selection.
 - Added validation for split fractions, explicit fallback logging for infeasible stratification, and edge-case handling for one-sided validation/test splits.

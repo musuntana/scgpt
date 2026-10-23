@@ -45,23 +45,37 @@ or the project must narrow its claim to sample-level generalization for
 perturbations represented during training. Architecture changes and new
 biological performance claims require separate controlled experiments.
 
-## 2. Feature selection occurs before splitting
+## 2. Gene filtering and HVG selection
 
-`src/data/preprocess.py::prepare_adata` filters cells and genes, normalizes
-and log-transforms expression, and calls Scanpy HVG selection on the full
-retained AnnData object. The split indices are created later in
-`src/data/pairing.py::build_training_bundle`.
+The CLI preprocessing path now runs cell-level QC, per-cell normalization/log
+transformation, and deterministic cell subsampling before planning both split
+protocols. It then calls
+`src/data/preprocess.py::select_hvgs_from_training_partitions`, which fits
+the `min_cells_per_gene` filter and HVG selection on the intersection of
+`seen_train` and `unseen_train` perturbation samples. All filtered control
+cells are included as a shared reference population. The resulting gene set is
+applied to the full AnnData object, and the method, fit counts, seed, and
+control scope are recorded in `metadata.json` and run summaries.
 
-Per-cell normalization and log transformation are not fitted across samples
-in the same way as a learned global scaler, but HVG selection is data-dependent:
-held-out perturbation cells can influence which genes are retained. The current
-workflow is therefore transductive at the feature-selection step.
+Using the intersection is conservative: fewer perturbation cells fit the gene
+selection than are available in either individual training partition. However,
+it means no perturbation sample held out by either protocol can influence gene
+filtering or HVG selection, while retaining a single bundle compatible with the
+existing two-protocol evaluation flow.
 
-For a strict held-out evaluation, assign perturbation/sample splits before HVG
-selection, fit the HVG selection on the training partition (including the
-intended control reference), and apply the resulting gene set consistently to
-validation and test cells. Regenerate processed bundles and rerun affected
-experiments before comparing metrics.
+Per-cell normalization and log transformation operate independently per cell;
+they are performed before the split and do not fit cross-sample normalization
+statistics. Cell QC and capped subsampling also occur before the split. They
+are based on each cell's QC/counts or perturbation labels rather than fitting a
+predictive model, but should be reconsidered if the evaluation target changes to
+generalization across batches or cell contexts.
+
+**Existing processed bundles are not retroactively corrected.** Re-run
+preprocessing to create new bundles before making new claims. Their hashes and
+preprocessing diagnostics should be retained with each result. Direct calls to
+`prepare_adata()` using its backward-compatible defaults still perform
+pre-split gene filtering/HVG selection; strict evaluation pipelines should use
+the new split-aware selector or the CLI.
 
 ## What can be said today
 

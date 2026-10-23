@@ -79,9 +79,23 @@ def build_control_mean_lookup(
     return lookup, global_control_mean
 
 
-def _can_stratify(labels: np.ndarray) -> bool:
+def _can_stratify(
+    labels: np.ndarray,
+    *,
+    train_size: int | None = None,
+    test_size: int | None = None,
+) -> bool:
+    """Return whether every class can be represented in both split partitions."""
     _, counts = np.unique(labels, return_counts=True)
-    return counts.size > 0 and int(counts.min()) >= 2
+    if counts.size == 0 or int(counts.min()) < 2:
+        return False
+
+    num_classes = int(counts.size)
+    if train_size is not None and train_size < num_classes:
+        return False
+    if test_size is not None and test_size < num_classes:
+        return False
+    return True
 
 
 def _three_way_stratified_split(
@@ -99,7 +113,13 @@ def _three_way_stratified_split(
             "seen_test": np.array([], dtype=np.int64),
         }
 
-    stratify_labels = labels if _can_stratify(labels) else None
+    temp_size = int(np.ceil(len(indices) * temp_fraction))
+    train_size = len(indices) - temp_size
+    stratify_labels = (
+        labels
+        if _can_stratify(labels, train_size=train_size, test_size=temp_size)
+        else None
+    )
     train_idx, temp_idx = train_test_split(
         indices,
         test_size=temp_fraction,
@@ -116,10 +136,21 @@ def _three_way_stratified_split(
 
     val_ratio_within_temp = val_fraction / temp_fraction if temp_fraction else 0.0
     temp_labels = labels[temp_idx]
-    temp_stratify = temp_labels if _can_stratify(temp_labels) else None
+    test_fraction_within_temp = max(0.0, 1.0 - val_ratio_within_temp)
+    temp_test_size = int(np.ceil(len(temp_idx) * test_fraction_within_temp))
+    temp_train_size = len(temp_idx) - temp_test_size
+    temp_stratify = (
+        temp_labels
+        if _can_stratify(
+            temp_labels,
+            train_size=temp_train_size,
+            test_size=temp_test_size,
+        )
+        else None
+    )
     val_idx, test_idx = train_test_split(
         temp_idx,
-        test_size=max(0.0, 1.0 - val_ratio_within_temp),
+        test_size=test_fraction_within_temp,
         random_state=random_seed,
         stratify=temp_stratify,
     )

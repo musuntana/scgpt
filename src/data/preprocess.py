@@ -130,6 +130,28 @@ def select_hvgs_from_training_partitions(
         np.concatenate([control_positions, perturbed_positions[shared_train_indices]])
     )
     fit_adata = adata[fit_positions].copy()
+    min_cells_per_gene = int(preprocess_config.get("min_cells_per_gene", 3))
+    if min_cells_per_gene < 1:
+        raise ValueError(
+            f"min_cells_per_gene must be positive; got {min_cells_per_gene}."
+        )
+
+    original_position_key = "_scgpt_original_gene_position"
+    fit_adata.var[original_position_key] = np.arange(adata.n_vars, dtype=np.int64)
+    sc.pp.filter_genes(fit_adata, min_cells=min_cells_per_gene)
+    retained_positions = fit_adata.var[original_position_key].to_numpy(dtype=np.int64)
+    if retained_positions.size == 0:
+        raise ValueError(
+            "Training-only gene filtering removed every gene; lower min_cells_per_gene "
+            "or review the training/reference cells."
+        )
+
+    retained_gene_mask = np.zeros(adata.n_vars, dtype=bool)
+    retained_gene_mask[retained_positions] = True
+    adata = adata[:, retained_gene_mask].copy()
+    fit_adata = fit_adata.copy()
+    fit_adata.var.drop(columns=[original_position_key], inplace=True)
+
     n_top_genes = min(hvg_top_genes, int(fit_adata.n_vars))
     if n_top_genes < 1:
         raise ValueError("Cannot select HVGs from an AnnData object with zero genes.")
@@ -154,6 +176,8 @@ def select_hvgs_from_training_partitions(
         ),
         "hvg_fit_control_sample_count": int(control_positions.size),
         "hvg_fit_control_scope": "all_filtered_control_cells",
+        "min_cells_per_gene": min_cells_per_gene,
+        "hvg_gene_count_after_training_filter": int(fit_adata.n_vars),
         "hvg_requested_gene_count": hvg_top_genes,
         "hvg_selected_gene_count": int(selected_mask.sum()),
         "val_fraction": float(val_fraction),
@@ -180,8 +204,9 @@ def prepare_adata(
     control_label: str,
     random_seed: int,
     select_hvg: bool = True,
+    filter_genes_before_split: bool = True,
 ):
-    """Run QC, normalization, optional HVG selection, and local-first subsampling."""
+    """Run cell QC, normalization, optional gene filtering/HVG selection, and subsampling."""
     sc = _require_scanpy()
 
     if perturbation_col not in adata.obs.columns:
@@ -205,7 +230,8 @@ def prepare_adata(
     )
 
     sc.pp.filter_cells(adata, min_genes=min_genes_per_cell)
-    sc.pp.filter_genes(adata, min_cells=min_cells_per_gene)
+    if filter_genes_before_split:
+        sc.pp.filter_genes(adata, min_cells=min_cells_per_gene)
     sc.pp.normalize_total(adata, target_sum=normalize_total_target_sum)
     sc.pp.log1p(adata)
 

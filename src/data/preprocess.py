@@ -149,9 +149,21 @@ def select_hvgs_from_training_partitions(
     retained_gene_mask = np.zeros(adata.n_vars, dtype=bool)
     retained_gene_mask[retained_positions] = True
     adata = adata[:, retained_gene_mask].copy()
-    fit_adata = fit_adata.copy()
-    fit_adata.var.drop(columns=[original_position_key], inplace=True)
 
+    normalize_total_target_sum = float(
+        preprocess_config.get("normalize_total_target_sum", 10_000)
+    )
+    if normalize_total_target_sum <= 0:
+        raise ValueError(
+            "normalize_total_target_sum must be positive; "
+            f"got {normalize_total_target_sum}."
+        )
+    sc.pp.normalize_total(adata, target_sum=normalize_total_target_sum)
+    log1p_enabled = bool(preprocess_config.get("log1p", True))
+    if log1p_enabled:
+        sc.pp.log1p(adata)
+
+    fit_adata = adata[fit_positions].copy()
     n_top_genes = min(hvg_top_genes, int(fit_adata.n_vars))
     if n_top_genes < 1:
         raise ValueError("Cannot select HVGs from an AnnData object with zero genes.")
@@ -177,6 +189,8 @@ def select_hvgs_from_training_partitions(
         "hvg_fit_control_sample_count": int(control_positions.size),
         "hvg_fit_control_scope": "all_filtered_control_cells",
         "min_cells_per_gene": min_cells_per_gene,
+        "normalize_total_target_sum": normalize_total_target_sum,
+        "log1p": log1p_enabled,
         "hvg_gene_count_after_training_filter": int(fit_adata.n_vars),
         "hvg_requested_gene_count": hvg_top_genes,
         "hvg_selected_gene_count": int(selected_mask.sum()),
@@ -205,8 +219,9 @@ def prepare_adata(
     random_seed: int,
     select_hvg: bool = True,
     filter_genes_before_split: bool = True,
+    normalize_expression: bool = True,
 ):
-    """Run cell QC, normalization, optional gene filtering/HVG selection, and subsampling."""
+    """Run cell QC, optional normalization/gene filtering/HVG selection, and subsampling."""
     sc = _require_scanpy()
 
     if perturbation_col not in adata.obs.columns:
@@ -232,8 +247,10 @@ def prepare_adata(
     sc.pp.filter_cells(adata, min_genes=min_genes_per_cell)
     if filter_genes_before_split:
         sc.pp.filter_genes(adata, min_cells=min_cells_per_gene)
-    sc.pp.normalize_total(adata, target_sum=normalize_total_target_sum)
-    sc.pp.log1p(adata)
+    if normalize_expression:
+        sc.pp.normalize_total(adata, target_sum=normalize_total_target_sum)
+        if bool(preprocess_config.get("log1p", True)):
+            sc.pp.log1p(adata)
 
     if select_hvg:
         n_top_genes = min(hvg_top_genes, adata.n_vars)

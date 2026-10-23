@@ -86,6 +86,14 @@ def test_hvg_selection_excludes_heldout_perturbation_samples(monkeypatch):
     }
     expected_control_ids = {str(adata.obs_names[index]) for index in control_positions}
 
+    # This gene is expressed only in samples held out by at least one protocol.
+    # A global min-cells filter would retain it; a training-only filter must drop it.
+    adata.X[:, -1] = 0.0
+    heldout_ids = set(adata.obs_names.astype(str)) - expected_training_ids - expected_control_ids
+    for row_index, sample_id in enumerate(adata.obs_names.astype(str)):
+        if sample_id in heldout_ids:
+            adata.X[row_index, -1] = 5.0
+
     result = select_hvgs_from_training_partitions(
         adata=adata,
         preprocess_config={"hvg_top_genes": 3},
@@ -100,6 +108,8 @@ def test_hvg_selection_excludes_heldout_perturbation_samples(monkeypatch):
     assert not (set(fitted_sample_ids) & (set(adata.obs_names) - expected_training_ids - expected_control_ids))
     assert result.n_obs == adata.n_obs
     assert result.n_vars == 3
+    assert "GENE_7" in adata.var_names
+    assert "GENE_7" not in result.var_names
 
     diagnostics = result.uns["scgpt_preprocessing"]
     assert diagnostics["hvg_selection_method"] == "shared_seen_unseen_training_intersection"

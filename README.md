@@ -321,13 +321,27 @@ Run the full Norman2019 local demo flow:
 ./scripts/run_norman2019_demo.sh
 ```
 
-Train the Transformer:
+Train the Transformer on the default `seen` protocol:
 
 ```bash
 ./scripts/run_train_transformer.sh \
   --bundle-dir data/processed/demo_bundle \
   --output-dir artifacts/transformer_seen
 ```
+
+A separate `unseen`-protocol run writes its own protocol record and only evaluates
+`unseen_test`:
+
+```bash
+./scripts/run_train_transformer.sh \
+  --bundle-dir data/processed/demo_bundle \
+  --output-dir artifacts/transformer_unseen_norman2019_demo \
+  --split-prefix unseen
+```
+
+**Important:** the current categorical perturbation embedding still cannot represent
+an unseen perturbation identity with a trained embedding. Treat this as a diagnostic
+run, not a validated zero-shot model result.
 
 Train baselines:
 

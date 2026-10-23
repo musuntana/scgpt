@@ -308,10 +308,12 @@ def build_run_summary(
             history = loaded_history
 
     metrics: dict[str, Any] = {}
-    if seen_metrics_path is not None and Path(seen_metrics_path).exists():
-        metrics["seen_test"] = load_json(seen_metrics_path)
-    if unseen_metrics_path is not None and Path(unseen_metrics_path).exists():
-        metrics["unseen_test"] = load_json(unseen_metrics_path)
+    matching_metrics_path = (
+        seen_metrics_path if split_prefix == "seen" else unseen_metrics_path
+    )
+    matching_metric_name = f"{split_prefix}_test"
+    if matching_metrics_path is not None and Path(matching_metrics_path).exists():
+        metrics[matching_metric_name] = load_json(matching_metrics_path)
 
     split_config = data_config["split"]
     split_protocol_key = f"{split_prefix}_protocol"

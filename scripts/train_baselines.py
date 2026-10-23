@@ -86,6 +86,7 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     bundle = load_processed_bundle(args.bundle_dir)
     splits = bundle["splits"]
     metadata = bundle["metadata"]
+    test_split_name = matching_test_split(args.split_prefix, splits)
 
     train_idx = splits[f"{args.split_prefix}_train"]
 
@@ -108,7 +109,7 @@ def _train_xgboost(args: argparse.Namespace) -> None:
     joblib.dump(model, output_dir / "xgboost_model.joblib")
 
     metrics_by_split: dict[str, dict[str, float]] = {}
-    split_name = matching_test_split(args.split_prefix, splits)
+    split_name = test_split_name
     split_indices = splits[split_name]
     predictions = model.predict(features[split_indices])
     metrics = _evaluate_numpy_baseline(
@@ -148,6 +149,7 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     seed_everything(int(train_config_payload["train"]["seed"]))
     trainer_config = TrainerConfig.from_dict(train_config_payload)
     bundle = load_processed_bundle(args.bundle_dir)
+    test_split_name = matching_test_split(args.split_prefix, bundle["splits"])
 
     train_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_train")
     val_dataset = ProcessedDataset(args.bundle_dir, f"{args.split_prefix}_val")
@@ -174,7 +176,7 @@ def _train_mlp(args: argparse.Namespace, train_config_path: str) -> None:
     checkpoint_path = Path(args.output_dir) / "best_model.pt"
     trainer.model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
 
-    split_name = matching_test_split(args.split_prefix, bundle["splits"])
+    split_name = test_split_name
     eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
     eval_loader = DataLoader(
         eval_dataset,

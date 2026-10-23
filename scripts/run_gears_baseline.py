@@ -10,6 +10,7 @@ import math
 import platform
 import pickle
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -111,6 +112,41 @@ def file_sha256(path: str | Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+EXPECTED_BUNDLE_ARTIFACTS = ("arrays.npz", "splits.npz", "metadata.json")
+
+
+def validate_bundle_artifact_hashes(
+    bundle_dir: str | Path,
+    artifact_hashes: Any,
+) -> None:
+    """Require and verify the exact processed-bundle artifact set from preflight."""
+    expected_names = set(EXPECTED_BUNDLE_ARTIFACTS)
+    if not isinstance(artifact_hashes, dict) or set(artifact_hashes) != expected_names:
+        expected = ", ".join(EXPECTED_BUNDLE_ARTIFACTS)
+        raise ValueError(
+            "GEARS preflight bundle_artifacts_sha256 must contain exactly: "
+            f"{expected}."
+        )
+
+    bundle_path = Path(bundle_dir)
+    for filename in EXPECTED_BUNDLE_ARTIFACTS:
+        expected_sha = artifact_hashes[filename]
+        if (
+            not isinstance(expected_sha, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected_sha) is None
+        ):
+            raise ValueError(
+                f"GEARS preflight bundle artifact hash is not a valid SHA-256 digest: {filename}"
+            )
+        artifact_path = bundle_path / filename
+        if not artifact_path.is_file():
+            raise FileNotFoundError(
+                f"Required processed-bundle artifact is missing: {artifact_path}"
+            )
+        if file_sha256(artifact_path) != expected_sha:
+            raise ValueError(f"Bundle artifact hash changed since preflight: {filename}")
 
 
 def package_version(distribution: str) -> str | None:
@@ -323,9 +359,9 @@ def run_gears_baseline(
             "GEARS custom split JSON no longer matches the hashed processed bundle; "
             "refusing a possible split/protocol substitution."
         )
-    for filename, expected_sha in preflight_manifest["bundle_artifacts_sha256"].items():
-        if file_sha256(bundle_path / filename) != expected_sha:
-            raise ValueError(f"Bundle artifact hash changed since preflight: {filename}")
+    validate_bundle_artifact_hashes(
+        bundle_path, preflight_manifest.get("bundle_artifacts_sha256")
+    )
 
     try:
         import anndata as ad

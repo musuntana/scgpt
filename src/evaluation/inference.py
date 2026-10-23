@@ -10,6 +10,7 @@ import torch
 
 from src.evaluation.metrics import mean_squared_error, pearson_correlation
 from src.models.mlp import MLPBaseline
+from src.models.shared_gene_transformer import SharedGeneIdentityTransformer
 from src.models.transformer import TransformerPerturbationModel
 from src.utils.config import load_yaml
 
@@ -23,6 +24,7 @@ class PerturbationInferenceBatch:
     sample_count: int
     control_mean: np.ndarray
     observed_delta_mean: np.ndarray
+    perturbation_gene_index: int = -1
 
 
 def build_torch_model(
@@ -38,18 +40,23 @@ def build_torch_model(
             num_genes=num_genes,
             num_perturbations=num_perturbations,
         )
-    if model_type != "transformer":
+    if model_type not in {"transformer", "transformer_shared_gene_identity"}:
         raise ValueError(f"Unsupported torch model_type={model_type!r}")
 
     transformer_cfg = model_config["transformer"]
+    transformer_kwargs = {
+        "num_genes": num_genes,
+        "d_model": int(transformer_cfg["d_model"]),
+        "n_heads": int(transformer_cfg["n_heads"]),
+        "n_layers": int(transformer_cfg["n_layers"]),
+        "ffn_dim": int(transformer_cfg["ffn_dim"]),
+        "dropout": float(transformer_cfg["dropout"]),
+    }
+    if model_type == "transformer_shared_gene_identity":
+        return SharedGeneIdentityTransformer(**transformer_kwargs)
     return TransformerPerturbationModel(
-        num_genes=num_genes,
         num_perturbations=num_perturbations,
-        d_model=int(transformer_cfg["d_model"]),
-        n_heads=int(transformer_cfg["n_heads"]),
-        n_layers=int(transformer_cfg["n_layers"]),
-        ffn_dim=int(transformer_cfg["ffn_dim"]),
-        dropout=float(transformer_cfg["dropout"]),
+        **transformer_kwargs,
     )
 
 
@@ -87,12 +94,15 @@ def build_perturbation_batch(
     if int(mask.sum()) == 0:
         raise ValueError(f"No samples found for perturbation={perturbation_name}")
 
+    gene_names = [str(name) for name in bundle["metadata"]["gene_names"]]
+    gene_index_by_name = {name: index for index, name in enumerate(gene_names)}
     return PerturbationInferenceBatch(
         perturbation_name=perturbation_name,
         perturbation_index=perturbation_index,
         sample_count=int(mask.sum()),
         control_mean=bundle["control_expression"][mask].mean(axis=0).astype(np.float32),
         observed_delta_mean=bundle["target_delta"][mask].mean(axis=0).astype(np.float32),
+        perturbation_gene_index=gene_index_by_name.get(perturbation_name, -1),
     )
 
 
@@ -103,7 +113,17 @@ def predict_delta_for_batch(
 ) -> np.ndarray:
     """Run one aggregated perturbation inference pass."""
     control_tensor = torch.from_numpy(batch.control_mean).float().unsqueeze(0)
-    perturbation_tensor = torch.tensor([batch.perturbation_index], dtype=torch.long)
+    if getattr(model, "requires_perturbation_gene_index", False):
+        if batch.perturbation_gene_index < 0:
+            raise ValueError(
+                f"Perturbation {batch.perturbation_name!r} does not exactly match a saved "
+                "gene name; shared gene-identity inference is unavailable."
+            )
+        perturbation_tensor = torch.tensor(
+            [batch.perturbation_gene_index], dtype=torch.long
+        )
+    else:
+        perturbation_tensor = torch.tensor([batch.perturbation_index], dtype=torch.long)
     predicted = model(control_tensor, perturbation_tensor)
     return predicted.squeeze(0).detach().cpu().numpy().astype(np.float32)
 

@@ -42,11 +42,14 @@ def _filter_rows(rows: list[dict[str, Any]], suffix: str) -> list[dict[str, Any]
     return _sort_rows(filtered)
 
 
-def _best_row(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    candidates = [row for row in rows if row.get("unseen_pearson") is not None]
+def _best_row(
+    rows: list[dict[str, Any]],
+    metric_field: str = "unseen_pearson",
+) -> dict[str, Any] | None:
+    candidates = [row for row in rows if row.get(metric_field) is not None]
     if not candidates:
         return None
-    return max(candidates, key=lambda row: float(row["unseen_pearson"]))
+    return max(candidates, key=lambda row: float(row[metric_field]))
 
 
 def _asset_entry(project_root: Path, relative_path: str) -> dict[str, Any]:
@@ -127,10 +130,12 @@ def build_project_snapshot(project_root: str | Path = ".") -> dict[str, Any]:
     all_rows = scan_artifact_comparison_rows(root / "artifacts")
     real_rows = _filter_rows(all_rows, "_norman2019_demo")
     synthetic_rows = _filter_rows(all_rows, "_synthetic_demo")
-    best_real = _best_row(real_rows)
+    best_real_unseen = _best_row(real_rows, "unseen_pearson")
+    best_real_seen = _best_row(real_rows, "seen_pearson")
     transformer_seen_summary = _transformer_real_summary(root, "seen")
     transformer_unseen_summary = _transformer_real_summary(root, "unseen")
-    transformer_multiseed = _transformer_real_multiseed_summary(root, "unseen")
+    transformer_multiseed_seen = _transformer_real_multiseed_summary(root, "seen")
+    transformer_multiseed_unseen = _transformer_real_multiseed_summary(root, "unseen")
     transformer_error_highlights = _transformer_real_error_highlights(root)
     transformer_seen = transformer_seen_summary.get("test_metrics", {}).get("seen_test", {})
     transformer_unseen = transformer_unseen_summary.get("test_metrics", {}).get(
@@ -153,24 +158,43 @@ def build_project_snapshot(project_root: str | Path = ".") -> dict[str, Any]:
         "num_samples": bundle.get("num_samples"),
         "num_genes": bundle.get("num_genes"),
         "num_perturbations": bundle.get("num_perturbations"),
-        "best_real_unseen_model": best_real.get("display_name") if best_real else None,
-        "best_real_unseen_pearson": best_real.get("unseen_pearson") if best_real else None,
+        "best_real_seen_model": best_real_seen.get("display_name") if best_real_seen else None,
+        "best_real_seen_pearson": best_real_seen.get("seen_pearson") if best_real_seen else None,
+        "best_real_unseen_model": best_real_unseen.get("display_name") if best_real_unseen else None,
+        "best_real_unseen_pearson": (
+            best_real_unseen.get("unseen_pearson") if best_real_unseen else None
+        ),
         "transformer_seen_pearson": transformer_seen.get("pearson_per_perturbation"),
+        "transformer_seen_top100_deg_overlap": transformer_seen.get("topk_deg_overlap_100"),
         "transformer_unseen_pearson": transformer_unseen.get("pearson_per_perturbation"),
         "transformer_unseen_top20_deg_overlap": transformer_unseen.get("topk_deg_overlap_20"),
         "transformer_unseen_top100_deg_overlap": transformer_unseen.get("topk_deg_overlap_100"),
-        "transformer_multiseed_num_runs": transformer_multiseed.get("num_runs"),
-        "transformer_multiseed_seeds": transformer_multiseed.get("seeds"),
-        "transformer_multiseed_unseen_pearson_mean": transformer_multiseed.get(
+        "transformer_multiseed_seen_num_runs": transformer_multiseed_seen.get("num_runs"),
+        "transformer_multiseed_seen_seeds": transformer_multiseed_seen.get("seeds"),
+        "transformer_multiseed_seen_pearson_mean": transformer_multiseed_seen.get(
+            "seen_pearson_mean"
+        ),
+        "transformer_multiseed_seen_pearson_std": transformer_multiseed_seen.get(
+            "seen_pearson_std"
+        ),
+        "transformer_multiseed_seen_top100_deg_mean": transformer_multiseed_seen.get(
+            "seen_top100_deg_mean"
+        ),
+        "transformer_multiseed_seen_top100_deg_std": transformer_multiseed_seen.get(
+            "seen_top100_deg_std"
+        ),
+        "transformer_multiseed_unseen_num_runs": transformer_multiseed_unseen.get("num_runs"),
+        "transformer_multiseed_unseen_seeds": transformer_multiseed_unseen.get("seeds"),
+        "transformer_multiseed_unseen_pearson_mean": transformer_multiseed_unseen.get(
             "unseen_pearson_mean"
         ),
-        "transformer_multiseed_unseen_pearson_std": transformer_multiseed.get(
+        "transformer_multiseed_unseen_pearson_std": transformer_multiseed_unseen.get(
             "unseen_pearson_std"
         ),
-        "transformer_multiseed_unseen_top100_deg_mean": transformer_multiseed.get(
+        "transformer_multiseed_unseen_top100_deg_mean": transformer_multiseed_unseen.get(
             "unseen_top100_deg_mean"
         ),
-        "transformer_multiseed_unseen_top100_deg_std": transformer_multiseed.get(
+        "transformer_multiseed_unseen_top100_deg_std": transformer_multiseed_unseen.get(
             "unseen_top100_deg_std"
         ),
         "all_real_models_unseen_pearson_ge_0_82": (

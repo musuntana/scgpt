@@ -24,14 +24,16 @@ filtering, single-gene and multi-gene conditions).
 
 | Step | Implementation |
 |---|---|
-| Filter cells and genes | min 200 genes/cell, 3 cells/gene |
-| Normalize | library-size normalize to 10,000 counts/cell |
-| Log-transform | `log1p` |
-| HVG selection | top 512 highly variable genes (scanpy) |
+| Cell QC and subsampling | min 200 genes/cell; cap cells per perturbation |
+| Split planning | seen (within-condition) and unseen (held-out perturbation groups) indices |
+| Gene filter | `min_cells_per_gene` fitted on the intersection of both training partitions plus controls |
+| Normalize | library-size normalize to 10,000 counts/cell after the training-derived gene filter |
+| Log-transform | optional `log1p` |
+| HVG selection | top 512 genes fitted on the same training/reference subset |
+| Apply feature mask | same training-derived gene set applied to all samples |
 | Sparse → dense | after HVG slicing, for training efficiency |
 | Control mean | batch-aware (or global fallback) per perturbation condition |
 | Delta expression | `perturbed_cell - control_mean` per gene |
-| Split | seen (stratified within condition) / unseen (held-out conditions) |
 
 Output: `data/processed/<bundle_name>/` — a `.npz` archive of control
 expression, delta expression, perturbation indices, and associated metadata
@@ -47,7 +49,11 @@ Three model classes share the same training contract:
 | MLP baseline | `src/models/mlp.py` |
 | XGBoost baseline | `src/models/xgboost_baseline.py` |
 
-Checkpoints and JSON metrics land in `artifacts/<run_name>/`.
+Checkpoints and JSON metrics land in `artifacts/<run_name>/`. Each training
+run evaluates only the test split matching its declared training protocol. A
+seen-trained checkpoint must not be evaluated as evidence for held-out
+perturbation generalization; the current categorical perturbation embedding
+cannot represent an unseen identity with a trained embedding row.
 
 ### 4. Evaluation (`src/evaluation/`)
 

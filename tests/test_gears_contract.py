@@ -23,7 +23,7 @@ def _bundle() -> dict:
     return {
         "metadata": {
             "gene_names": ["g1", "g2"],
-            "perturbation_names": NAMES,
+            "perturbation_names": list(NAMES),
             "preprocessing_diagnostics": {
                 "hvg_selection_method": "shared_seen_unseen_training_intersection",
                 "heldout_perturbation_samples_excluded_from_hvg_fit": True,
@@ -183,6 +183,8 @@ def test_preflight_does_not_export_when_group_split_is_invalid(tmp_path):
     source.mkdir()
     np.savez_compressed(
         source / "arrays.npz",
+        control_expression=np.ones((8, 2), dtype=np.float32),
+        target_delta=np.zeros((8, 2), dtype=np.float32),
         perturbation_index=bundle["perturbation_index"],
         sample_ids=np.array(bundle["sample_ids"]),
     )

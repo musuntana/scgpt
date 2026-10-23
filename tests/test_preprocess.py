@@ -9,7 +9,10 @@ import pytest
 
 import src.data.preprocess as preprocess
 from src.data.pairing import create_split_indices
-from src.data.preprocess import select_hvgs_from_training_partitions
+from src.data.preprocess import (
+    extend_hvg_mask_with_target_genes,
+    select_hvgs_from_training_partitions,
+)
 
 
 def _make_adata() -> ad.AnnData:
@@ -130,6 +133,142 @@ def test_hvg_selection_rejects_non_positive_gene_count(monkeypatch):
         select_hvgs_from_training_partitions(
             adata=_make_adata(),
             preprocess_config={"hvg_top_genes": 0},
+            perturbation_col="perturbation",
+            control_label="control",
+            val_fraction=0.2,
+            test_fraction=0.2,
+            random_seed=42,
+        )
+
+
+def test_target_aware_hvg_mask_retains_known_target_gene_names():
+    mask, diagnostics = extend_hvg_mask_with_target_genes(
+        gene_names=["A", "B", "C", "D"],
+        hvg_mask=np.array([False, False, True, False]),
+        perturbation_names=["A", "B"],
+        max_panel_genes=3,
+    )
+
+    assert mask.tolist() == [True, True, True, False]
+    assert diagnostics["known_target_gene_count"] == 2
+    assert diagnostics["target_genes_added_to_hvgs"] == 2
+    assert diagnostics["feature_panel_gene_count"] == 3
+    assert diagnostics["heldout_perturbation_expression_used_for_target_retention"] is False
+
+
+@pytest.mark.parametrize(
+    ("names", "targets", "budget", "message"),
+    [
+        (["A", "B"], ["A", "C"], 3, "Unmapped targets"),
+        (["A", "A", "B"], ["A"], 3, "ambiguous targets"),
+        (["A", "B", "C"], ["A", "B"], 2, "exceeds hvg_upper_bound"),
+        (["A", "B", "B"], ["A"], 3, "ambiguous duplicate gene names"),
+    ],
+)
+def test_target_aware_hvg_mask_fails_closed_for_unmappable_or_oversized_panel(
+    names, targets, budget, message
+):
+    selected = np.zeros(len(names), dtype=bool)
+    selected[-1] = True
+    with pytest.raises(ValueError, match=message):
+        extend_hvg_mask_with_target_genes(
+            gene_names=names,
+            hvg_mask=selected,
+            perturbation_names=targets,
+            max_panel_genes=budget,
+        )
+
+
+def test_target_aware_training_hvg_panel_preserves_hvg_semantics_and_target_coverage(
+    monkeypatch,
+):
+    adata = _make_adata()
+    adata.var_names = ["A", "B", "C", "D", "E", "GENE_5", "GENE_6", "GENE_7"]
+
+    def fake_filter_genes(fit_adata, min_cells):
+        expressed = np.count_nonzero(np.asarray(fit_adata.X), axis=0)
+        fit_adata._inplace_subset_var(expressed >= min_cells)
+
+    def fake_hvgs(fit_adata, n_top_genes):
+        selected = np.zeros(fit_adata.n_vars, dtype=bool)
+        selected[-n_top_genes:] = True
+        fit_adata.var["highly_variable"] = selected
+
+    monkeypatch.setattr(
+        preprocess,
+        "_require_scanpy",
+        lambda: SimpleNamespace(
+            pp=SimpleNamespace(
+                filter_genes=fake_filter_genes,
+                normalize_total=lambda _adata, target_sum: None,
+                log1p=lambda _adata: None,
+                highly_variable_genes=fake_hvgs,
+            )
+        ),
+    )
+
+    result = select_hvgs_from_training_partitions(
+        adata=adata,
+        preprocess_config={
+            "hvg_top_genes": 2,
+            "hvg_upper_bound": 7,
+            "retain_perturbation_target_genes": True,
+        },
+        perturbation_col="perturbation",
+        control_label="control",
+        val_fraction=0.2,
+        test_fraction=0.2,
+        random_seed=42,
+    )
+
+    assert result.n_vars == 7
+    assert set("ABCDE").issubset(set(result.var_names))
+    assert int(result.var["highly_variable"].sum()) == 2
+    assert bool(result.var["scgpt_feature_selected"].all())
+    diagnostics = result.uns["scgpt_preprocessing"]
+    assert diagnostics["schema_version"] == 2
+    assert diagnostics["hvg_selected_gene_count"] == 2
+    assert diagnostics["target_genes_added_to_hvgs"] == 5
+    assert diagnostics["target_genes_retained"] == 5
+    assert diagnostics["feature_panel_gene_count"] == 7
+
+
+def test_target_aware_preprocessing_blocks_gene_removed_by_training_filter(monkeypatch):
+    adata = _make_adata()
+    adata.var_names = ["A", "B", "C", "D", "E", "GENE_5", "GENE_6", "GENE_7"]
+    adata.X[:, 0] = 0.0
+
+    def fake_filter_genes(fit_adata, min_cells):
+        expressed = np.count_nonzero(np.asarray(fit_adata.X), axis=0)
+        fit_adata._inplace_subset_var(expressed >= min_cells)
+
+    monkeypatch.setattr(
+        preprocess,
+        "_require_scanpy",
+        lambda: SimpleNamespace(
+            pp=SimpleNamespace(
+                filter_genes=fake_filter_genes,
+                normalize_total=lambda _adata, target_sum: None,
+                log1p=lambda _adata: None,
+                highly_variable_genes=lambda fit_adata, n_top_genes: fit_adata.var.__setitem__(
+                    "highly_variable",
+                    np.asarray(
+                        [False] * (fit_adata.n_vars - n_top_genes)
+                        + [True] * n_top_genes,
+                        dtype=bool,
+                    ),
+                ),
+            )
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Unmapped targets"):
+        select_hvgs_from_training_partitions(
+            adata=adata,
+            preprocess_config={
+                "hvg_top_genes": 2,
+                "retain_perturbation_target_genes": True,
+            },
             perturbation_col="perturbation",
             control_label="control",
             val_fraction=0.2,

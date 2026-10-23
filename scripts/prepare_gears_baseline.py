@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import pathlib
 import pickle
 import sys
-import typing
+from pathlib import Path
+from typing import Any
 
 
-PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -49,26 +49,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def file_sha256(path: str | pathlib.Path) -> str:
+def file_sha256(path: str | Path) -> str:
     digest = hashlib.sha256()
-    with pathlib.Path(path).open("rb") as handle:
+    with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
 
 
 def _rebuild_source_and_export(
-    source_h5ad: str | pathlib.Path,
-    bundle: dict[str, typing.Any],
+    source_h5ad: str | Path,
+    bundle: dict[str, Any],
     *,
-    data_config_path: str | pathlib.Path,
+    data_config_path: str | Path,
     perturbation_col: str,
     control_label: str | None,
     batch_col: str,
     context_cols: list[str],
     hvg_top_genes: int | None,
     max_cells_per_perturbation: int | None,
-) -> tuple[typing.Any, dict[str, typing.Any], dict[str, typing.Any]]:
+) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     data_config = load_yaml(data_config_path)
     ensure_keys(
         data_config,
@@ -164,20 +164,20 @@ def _rebuild_source_and_export(
 
 
 def prepare_gears_preflight(
-    bundle_dir: str | pathlib.Path,
-    output_dir: str | pathlib.Path,
+    bundle_dir: str | Path,
+    output_dir: str | Path,
     *,
-    source_h5ad: str | pathlib.Path | None = None,
-    data_config_path: str | pathlib.Path = "configs/data.yaml",
+    source_h5ad: str | Path | None = None,
+    data_config_path: str | Path = "configs/data.yaml",
     perturbation_col: str = "auto",
     control_label: str | None = None,
     batch_col: str = "auto",
     context_cols: list[str] | None = None,
     hvg_top_genes: int | None = None,
     max_cells_per_perturbation: int | None = None,
-) -> dict[str, typing.Any]:
-    source = pathlib.Path(bundle_dir)
-    output = pathlib.Path(output_dir)
+) -> dict[str, Any]:
+    source = Path(bundle_dir)
+    output = Path(output_dir)
     bundle = load_processed_bundle(source)
     split, manifest = build_gears_split_contract(bundle)
 

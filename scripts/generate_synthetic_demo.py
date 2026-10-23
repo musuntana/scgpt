@@ -20,6 +20,7 @@ from src.data.synthetic import (
 )
 from src.data.torch_dataset import ProcessedDataset
 from src.evaluation.deg import save_deg_artifact
+from src.evaluation.protocol import matching_test_split
 from src.models.transformer import TransformerPerturbationModel
 from src.training.trainer import Trainer, TrainerConfig
 from src.utils.config import load_yaml
@@ -139,18 +140,25 @@ def main() -> None:
     checkpoint_path = output_dir / "best_model.pt"
     trainer.model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
 
-    for split_name in ("seen_test", "unseen_test"):
-        eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
-        eval_loader = DataLoader(
-            eval_dataset,
-            batch_size=trainer_config.batch_size,
-            shuffle=False,
-            num_workers=trainer_config.num_workers,
+    split_name = matching_test_split("seen", bundle.splits)
+    eval_dataset = ProcessedDataset(args.bundle_dir, split_name)
+    eval_loader = DataLoader(
+        eval_dataset,
+        batch_size=trainer_config.batch_size,
+        shuffle=False,
+        num_workers=trainer_config.num_workers,
+    )
+    metrics = trainer.evaluate(eval_loader)
+    metrics_path = output_dir / f"{split_name}_metrics.json"
+    _write_metrics(metrics_path, metrics)
+    LOGGER.info("Saved synthetic %s metrics to %s", split_name, metrics_path)
+    legacy_unseen_metrics = output_dir / "unseen_test_metrics.json"
+    if legacy_unseen_metrics.exists():
+        LOGGER.warning(
+            "Retaining legacy cross-protocol artifact %s; it is not included in the "
+            "current seen-protocol run summary.",
+            legacy_unseen_metrics,
         )
-        metrics = trainer.evaluate(eval_loader)
-        metrics_path = output_dir / f"{split_name}_metrics.json"
-        _write_metrics(metrics_path, metrics)
-        LOGGER.info("Saved synthetic %s metrics to %s", split_name, metrics_path)
 
     deg_df = build_synthetic_deg_artifact(
         gene_names=bundle.gene_names,
@@ -183,7 +191,6 @@ def main() -> None:
         train_config_path=args.train_config,
         history_path=output_dir / "history.json",
         seen_metrics_path=output_dir / "seen_test_metrics.json",
-        unseen_metrics_path=output_dir / "unseen_test_metrics.json",
     )
     write_run_summary(summary, output_dir / "run_summary.json")
     LOGGER.info("Saved synthetic run summary to %s", output_dir / "run_summary.json")

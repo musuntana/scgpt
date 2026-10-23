@@ -25,6 +25,7 @@ class ProcessedBundle:
     sample_ids: list[str]
     splits: dict[str, np.ndarray]
     split_diagnostics: dict[str, Any] = field(default_factory=dict)
+    preprocessing_diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 def _row_to_dense(matrix, row_index: int) -> np.ndarray:
@@ -517,6 +518,15 @@ def build_training_bundle(
         val_fraction=val_fraction,
         test_fraction=test_fraction,
     )
+    preprocessing_diagnostics = dict(
+        getattr(adata, "uns", {}).get("scgpt_preprocessing", {})
+    )
+    if not preprocessing_diagnostics:
+        preprocessing_diagnostics = {
+            "schema_version": 1,
+            "status": "not_recorded_legacy_or_external",
+            "hvg_selection_method": "unknown",
+        }
     LOGGER.info(
         "Built processed bundle with %s samples, %s genes, and %s perturbations.",
         len(sample_ids),
@@ -532,6 +542,7 @@ def build_training_bundle(
         sample_ids=sample_ids,
         splits=splits,
         split_diagnostics=split_diagnostics,
+        preprocessing_diagnostics=preprocessing_diagnostics,
     )
 
 
@@ -561,6 +572,12 @@ def save_processed_bundle(bundle: ProcessedBundle, output_dir: str | Path) -> No
                     bundle.perturbation_index,
                     bundle.splits,
                 ),
+            },
+            "preprocessing_diagnostics": bundle.preprocessing_diagnostics
+            or {
+                "schema_version": 1,
+                "status": "not_recorded",
+                "hvg_selection_method": "unknown",
             },
         },
     )

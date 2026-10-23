@@ -250,20 +250,24 @@ def test_gene_order_validation_rejects_gears_symbol_reordering() -> None:
         )
 
 
-def test_control_relative_delta_metrics_align_prediction_and_target_spaces() -> None:
+def test_control_relative_delta_metrics_use_sample_matched_controls() -> None:
     bundle = _bundle()
     bundle["target_delta"][6:8] = np.array([[0.5, -0.5], [0.5, -0.5]])
+    # The two held-out samples have different matched controls; their mean is
+    # [2.0, 3.0], unlike the global control mean in the fixture ([1.0, 1.0]).
+    bundle["control_expression"][6:8] = np.array([[1.0, 1.0], [3.0, 5.0]])
 
     result = compute_control_relative_delta_metrics(
-        {"D": np.array([1.5, 0.5], dtype=np.float32)},
+        {"D": np.array([2.5, 2.5], dtype=np.float32)},
         bundle,
-        control_reference_mean=np.array([1.0, 1.0], dtype=np.float32),
     )
 
     assert result["metric_space"] == "control_relative_delta_expression"
+    assert result["control_reference_source"] == "bundle.control_expression"
     assert result["directly_comparable_to_repository_delta_metrics"] is True
     assert result["mse_per_perturbation"] == pytest.approx(0.0)
     assert result["pearson_per_perturbation"] == pytest.approx(1.0)
+    assert result["matched_control_mean_sha256"]["D"]
     assert result["comparable_metric_keys"] == [
         "mse_per_perturbation",
         "pearson_per_perturbation",
@@ -271,22 +275,35 @@ def test_control_relative_delta_metrics_align_prediction_and_target_spaces() -> 
     assert result["comparison_eligible"] is False
 
 
+def test_control_relative_delta_metrics_reject_missing_control_expression() -> None:
+    bundle = _bundle()
+    bundle.pop("control_expression")
+
+    with pytest.raises(ValueError, match="control_expression array is missing"):
+        compute_control_relative_delta_metrics(
+            {"D": np.ones(2, dtype=np.float32)},
+            bundle,
+        )
+
+
 @pytest.mark.parametrize(
-    ("baseline", "message"),
+    ("control_expression", "message"),
     [
-        (np.array([1.0]), "one-dimensional vector"),
-        (np.array([1.0, np.nan]), "non-finite"),
+        (np.ones((8, 1)), "shape must match"),
+        (np.full((8, 2), np.nan), "control_expression contains non-finite"),
     ],
 )
-def test_control_relative_delta_metrics_reject_invalid_control_reference(
-    baseline: np.ndarray,
+def test_control_relative_delta_metrics_reject_invalid_matched_controls(
+    control_expression: np.ndarray,
     message: str,
 ) -> None:
+    bundle = _bundle()
+    bundle["control_expression"] = control_expression
+
     with pytest.raises(ValueError, match=message):
         compute_control_relative_delta_metrics(
             {"D": np.ones(2, dtype=np.float32)},
-            _bundle(),
-            control_reference_mean=baseline,
+            bundle,
         )
 
 

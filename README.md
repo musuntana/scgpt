@@ -15,11 +15,13 @@
 | MLP | 0.837 | 0.00085 | — |
 | XGBoost | 0.840 | 0.00084 | — |
 
-**Evaluation caveat:** These values are historical outputs from existing artifacts and are
-retained for traceability. The current categorical perturbation embeddings and pre-split
-HVG selection do not establish zero-shot generalization to perturbation identities absent
-from training. Do not present the current "unseen" results as validated zero-shot metrics
-until the protocol audit is resolved. See
+**Evaluation caveat:** These values are historical outputs from legacy artifacts and are
+retained for traceability. Those bundles used pre-split gene filtering/HVG selection, and
+the earlier training scripts evaluated both test protocols with the same checkpoint. The
+current CLI uses split-aware feature selection and training scripts now emit only metrics
+for the matching test protocol. Existing bundles and metrics are not retroactively fixed.
+The categorical perturbation-ID embeddings still do not establish zero-shot generalization
+to identities absent from training. See
 [`docs/evaluation-protocol-audit.md`](docs/evaluation-protocol-audit.md).
 
 The previously recorded three-seed Transformer aggregate is 0.830 +/- 0.007 reported
@@ -336,10 +338,11 @@ Train baselines:
   --baseline mlp
 ```
 
-The baseline output directory stores split-specific metrics:
-- `mlp_seen_test_metrics.json` and `mlp_unseen_test_metrics.json`
-- `xgboost_seen_test_metrics.json` and `xgboost_unseen_test_metrics.json`
-- `xgboost_model.joblib` and `xgboost_run_summary.json` for the tree baseline
+Each training run writes only its matching test metric (the default protocol is
+`seen`): `mlp_seen_test_metrics.json` or `xgboost_seen_test_metrics.json`.
+To evaluate the unseen-group protocol, train a separate run with `--split-prefix unseen`
+and a separate output directory. The XGBoost run also writes
+`xgboost_model.joblib` and `xgboost_run_summary.json`.
 
 Generate a real DEG artifact for app ranking:
 
@@ -388,10 +391,11 @@ Evaluate all three models in one command:
 make eval
 ```
 
-This evaluates Transformer and MLP on both seen and unseen test splits. XGBoost metrics are already written at train time.
-For Transformer and MLP it also writes:
-- split-specific perturbation-level CSV files
-- split-specific `*_error_summary.json` files listing the worst conditions
+This evaluates each checkpoint only on the test split matching its recorded training
+protocol. By default it uses the `seen` artifact directories; pass `--split-prefix unseen`
+to evaluate separately trained unseen-protocol artifacts. It never evaluates one checkpoint
+against both protocols. Transformer and MLP also write protocol-specific perturbation-level
+CSV files and `*_error_summary.json` files listing the worst conditions.
 
 Write a structured local run summary:
 
@@ -402,8 +406,7 @@ Write a structured local run summary:
   --checkpoint-path artifacts/transformer_seen/best_model.pt \
   --model-type transformer \
   --split-prefix seen \
-  --seen-metrics-path artifacts/transformer_seen/seen_test_metrics.json \
-  --unseen-metrics-path artifacts/transformer_seen/unseen_test_metrics.json
+  --seen-metrics-path artifacts/transformer_seen/seen_test_metrics.json
 ```
 
 Multi-seed reporting:
@@ -423,7 +426,6 @@ Multi-seed reporting:
   --model-type transformer \
   --split-prefix seen \
   --seen-metrics-path artifacts/transformer_seen_norman2019_seed7/seen_test_metrics.json \
-  --unseen-metrics-path artifacts/transformer_seen_norman2019_seed7/unseen_test_metrics.json \
   --seed 7
 
 # aggregate mean/std across repeated runs

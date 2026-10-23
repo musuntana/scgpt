@@ -35,11 +35,13 @@ Both `src/models/transformer.py` and `src/models/mlp.py` create a learned
   provide a meaningful learned representation for those held-out IDs.
 
 The training entrypoints now evaluate only the test split matching the selected
-training protocol, and the generic evaluation CLI rejects a split whose protocol
-conflicts with the checkpoint's run summary. Historical metrics and artifacts
-may still contain cross-protocol evaluations from the previous behavior; those
-values are retained for traceability but are not valid evidence of zero-shot
-generalization.
+training protocol and write `training_protocol.json` beside the checkpoint.
+The generic evaluation CLI checks that record (or a legacy run summary) and
+rejects cross-protocol evaluation. Run summaries, comparison rows, project
+snapshots, and multi-seed reports now retain only metrics matching the run's
+training protocol. Historical files may still contain old cross-protocol
+metrics; they are retained for traceability but are not valid evidence of
+zero-shot generalization.
 
 A future zero-shot experiment needs a representation shared across perturbation
 identities (for example, explicit gene-level or other perturbation features),

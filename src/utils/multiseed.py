@@ -57,7 +57,12 @@ def build_multiseed_report(
 
         metric_summary: dict[str, dict[str, float | int]] = {}
         flat_metrics: dict[str, float] = {}
+        train_protocol = group[1]
         for field in METRIC_FIELDS:
+            if field.startswith("seen_") and train_protocol != "seen":
+                continue
+            if field.startswith("unseen_") and train_protocol != "unseen":
+                continue
             values = [float(row[field]) for row in group_rows if row.get(field) is not None]
             if not values:
                 continue

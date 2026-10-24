@@ -199,6 +199,8 @@ def main() -> None:
         "num_perturbations": int(len(bundle_perturbation_names)),
         "preprocess": preprocess_config,
         "deg": deg_config,
+        "evidence_scope": "observed_perturbation_expression_retrospective_only",
+        "independent_prediction_input_eligible": False,
     }
     csv_path, metadata_path = save_deg_artifact(
         deg_df=deg_df,

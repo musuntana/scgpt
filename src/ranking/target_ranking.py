@@ -19,14 +19,43 @@ def build_target_ranking(
     deg_df: pd.DataFrame | None = None,
     abs_predicted_delta_weight: float = 0.5,
     deg_significance_weight: float = 0.5,
+    ranking_mode: str = "prediction_only",
 ) -> pd.DataFrame:
-    """Combine predicted delta magnitude and DEG significance into a ranking."""
+    """Rank by predicted response; observed DEG use requires an explicit diagnostic mode.
+
+    An observed-DEG artifact is generally computed from measured perturbation
+    responses, potentially including held-out labels. It must not silently
+    contribute to an independent model prediction or target recommendation.
+    """
     predicted_delta = np.asarray(predicted_delta, dtype=np.float32).reshape(-1)
     if len(gene_names) != len(predicted_delta):
         raise ValueError("gene_names and predicted_delta must have the same length")
+    if ranking_mode not in {"prediction_only", "observed_deg_diagnostic"}:
+        raise ValueError(
+            f"Unknown ranking_mode={ranking_mode!r}; expected prediction_only "
+            "or observed_deg_diagnostic."
+        )
 
+    abs_delta = np.abs(predicted_delta)
+    normalized_abs_delta = _minmax_normalize(abs_delta)
     deg_scores = np.zeros(len(gene_names), dtype=np.float32)
-    if deg_df is not None and not deg_df.empty:
+    if ranking_mode == "prediction_only":
+        # Never blend observed test-set labels into prediction-only ranking,
+        # even if callers supply a DEG artifact or legacy blending weights.
+        importance_score = normalized_abs_delta
+    else:
+        if deg_df is None or deg_df.empty:
+            raise ValueError(
+                "observed_deg_diagnostic requires a non-empty observed DEG artifact."
+            )
+        if not (
+            np.isfinite(abs_predicted_delta_weight)
+            and np.isfinite(deg_significance_weight)
+            and abs_predicted_delta_weight >= 0
+            and deg_significance_weight >= 0
+            and abs_predicted_delta_weight + deg_significance_weight > 0
+        ):
+            raise ValueError("Diagnostic ranking weights must be finite, nonnegative, and nonzero.")
         deg_lookup = {
             str(row["gene"]): float(row["deg_significance"])
             for _, row in deg_df.iterrows()
@@ -35,14 +64,13 @@ def build_target_ranking(
             [deg_lookup.get(gene, 0.0) for gene in gene_names],
             dtype=np.float32,
         )
-
-    abs_delta = np.abs(predicted_delta)
-    normalized_abs_delta = _minmax_normalize(abs_delta)
-    normalized_deg = _minmax_normalize(deg_scores)
-    importance_score = (
-        abs_predicted_delta_weight * normalized_abs_delta
-        + deg_significance_weight * normalized_deg
-    )
+        if not np.isfinite(deg_scores).all():
+            raise ValueError("Observed DEG significance contains non-finite scores.")
+        normalized_deg = _minmax_normalize(deg_scores)
+        importance_score = (
+            abs_predicted_delta_weight * normalized_abs_delta
+            + deg_significance_weight * normalized_deg
+        )
 
     ranking_df = pd.DataFrame(
         {

@@ -157,3 +157,17 @@ constructors do not read Transformer YAML. Historical protocols without enough
 model configuration provenance remain readable but are **unverified** and
 must not support claims of protocol-matched performance. The Streamlit model
 selector also exposes the existing `transformer_shared_gene_identity` model.
+
+
+## Observed DEG data versus independent prediction
+
+The local DEG artifact is derived from **measured perturbation responses**
+and may contain held-out condition labels. It is valid for explicitly labeled
+retrospective error/DEG comparison but is **not** an independent feature for
+predicting unseen perturbations. The Streamlit target ranking defaults to
+`prediction_only`, using only the model-predicted absolute delta. The optional
+`observed_deg_diagnostic` mode requires an explicit user selection and shows
+a warning that observed DEG significance influences its scores. The DEG
+generator now records this evaluation-only evidence scope in its metadata.
+Do not use diagnostic-mode ranks as zero-shot prediction or prospective
+target-prioritization evidence.

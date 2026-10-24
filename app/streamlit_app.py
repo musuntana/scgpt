@@ -430,11 +430,6 @@ with inference_tab:
      "DEG Rows",
      int(len(deg_artifact)) if not deg_artifact.empty else 0,
  )
- deg_col3.metric(
-     "Ranking Mode",
-     "predicted + DEG" if not deg_artifact.empty else "prediction-only",
- )
-
  batch = build_perturbation_batch(bundle, selected_perturbation)
  predicted_delta = predict_delta_for_batch(model, batch)
  comparison_df = build_gene_comparison_frame(
@@ -450,20 +445,45 @@ with inference_tab:
  if not deg_artifact.empty:
      selected_deg_df = deg_artifact[deg_artifact["perturbation"] == selected_perturbation].copy()
 
- ranking_config = train_config.get("ranking", {})
- if selected_deg_df.empty:
-     abs_predicted_delta_weight = 1.0
-     deg_significance_weight = 0.0
+ # Observed DEG scores are computed from measured perturbation responses.
+ # They may include held-out cells, so they are never prediction inputs by default.
+ ranking_modes = ["prediction_only"]
+ if not selected_deg_df.empty:
+     ranking_modes.append("observed_deg_diagnostic")
+ ranking_mode = st.radio(
+     "Target-ranking evidence",
+     options=ranking_modes,
+     index=0,
+     format_func=lambda mode: (
+         "Prediction only (model output)"
+         if mode == "prediction_only"
+         else "Observed DEG-assisted (retrospective diagnostic; NOT a prediction)"
+     ),
+ )
+ deg_col3.metric(
+     "Ranking Mode",
+     "prediction-only" if ranking_mode == "prediction_only" else "observed DEG diagnostic",
+ )
+ if ranking_mode == "observed_deg_diagnostic":
+     st.warning(
+         "Diagnostic mode uses observed perturbation DEG significance, potentially "
+         "including held-out samples. This ranking is not an independent model prediction "
+         "or evidence of zero-shot generalization."
+     )
  else:
-     abs_predicted_delta_weight = float(ranking_config.get("abs_predicted_delta_weight", 0.5))
-     deg_significance_weight = float(ranking_config.get("deg_significance_weight", 0.5))
+     st.caption(
+         "Target ranking uses model-predicted response magnitude only. "
+         "Observed DEG data is excluded from scoring."
+     )
 
+ ranking_config = train_config.get("ranking", {})
  ranking_df = build_target_ranking(
      gene_names=metadata["gene_names"],
      predicted_delta=predicted_delta,
-     deg_df=selected_deg_df,
-     abs_predicted_delta_weight=abs_predicted_delta_weight,
-     deg_significance_weight=deg_significance_weight,
+     deg_df=selected_deg_df if ranking_mode == "observed_deg_diagnostic" else None,
+     abs_predicted_delta_weight=float(ranking_config.get("abs_predicted_delta_weight", 0.5)),
+     deg_significance_weight=float(ranking_config.get("deg_significance_weight", 0.5)),
+     ranking_mode=ranking_mode,
  )
 
  # Compute top-k overlap when DEG artifact is available
@@ -521,9 +541,9 @@ with inference_tab:
             unseen_error_summary,
          )
  if selected_deg_df.empty:
-     st.warning(
-         "No DEG rows were found for this perturbation. Ranking is currently prediction-only. "
-         "Generate a DEG artifact with `./scripts/run_generate_deg_artifact.sh` and place it in the artifact directory."
+     st.caption(
+         "No observed DEG artifact for this perturbation. Independent "
+         "prediction-only ranking remains available."
      )
  else:
      deg_caption = f"Loaded {len(selected_deg_df)} DEG rows for this perturbation"
@@ -543,12 +563,16 @@ with inference_tab:
      plt.close(scatter_figure)
 
  with ranking_col:
-     st.write("Top Target Ranking")
+     st.write(
+         "Prediction-only Target Ranking"
+         if ranking_mode == "prediction_only"
+         else "Observed DEG-assisted Diagnostic Ranking"
+     )
+     ranking_columns = ["rank", "gene", "predicted_delta", "importance_score"]
+     if ranking_mode == "observed_deg_diagnostic":
+         ranking_columns.insert(3, "deg_significance")
      st.dataframe(
-         ranking_df.loc[
-             :,
-             ["rank", "gene", "predicted_delta", "deg_significance", "importance_score"],
-         ].head(top_n),
+         ranking_df.loc[:, ranking_columns].head(top_n),
          use_container_width=True,
          height=460,
      )

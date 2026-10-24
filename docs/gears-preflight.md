@@ -72,7 +72,23 @@ GEARS' custom split loader expects condition names and its training code consume
 Tracking: [Issue #12](https://github.com/musuntana/scgpt/issues/12). Architectural comparison: [perturbation-modeling-options.md](perturbation-modeling-options.md).
 
 
-## 5. Optional train-only GEARS runtime
+## 5. GO-graph coverage-only check (no model run)
+
+Run this only after a source-H5AD export has produced `PREFLIGHT_ONLY` and `INPUT_ONLY_NO_MODEL_RUN` artifacts. Install the optional official GEARS/PyG stack in a separate environment; do not change the core `uv.lock`.
+
+```bash
+python scripts/check_gears_coverage.py \
+  --preflight-dir artifacts/gears_preflight_source \
+  --bundle-dir data/processed/norman2019_gears_preflight_bundle \
+  --output-dir artifacts/gears_coverage \
+  --gears-data-dir .cache/gears-go-coverage
+```
+
+This command validates the input/bundle hashes, split conditions, ordered gene IDs/symbols, and train-only metadata contract before loading the official `cell-gears` GO annotation. It invokes `PertData.set_pert_genes()` directly; it does **not** call `new_data_process`, create per-cell PyG graphs, initialize `GEARS`, build the weighted GO similarity edges, train, or generate model metrics. The annotation cache is isolated from the report directory and its SHA-256 is recorded in `gears_go_graph_coverage.json`.
+
+Interpret the result narrowly: a passing report means all required perturbation names occur in the official GEARS GO-annotation node set. It does not prove that weighted GO edges are built successfully, that every condition survives GEARS processing, that target equivalence holds, or that the model performs well. Any missing target exits non-zero with `STOPPED_GO_GRAPH_COVERAGE`; fix the naming/annotation issue and rerun into a new output directory. Never manually override the report.
+
+## 6. Optional train-only GEARS runtime
 
 Once the source-H5AD export succeeds, the repository now includes an optional runner that imports the official GEARS model but does **not** call its standard `GEARS.train()` method. The official trainer's built-in post-training path expects DE/dropout metadata and reports DE-labelled metrics; those assumptions are unsuitable for this unseen split.
 
